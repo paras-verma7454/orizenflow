@@ -1,6 +1,5 @@
-import { ImageResponse } from "@takumi-rs/image-response"
+import { ImageResponse } from "@takumi-rs/image-response/wasm"
 import { notFound } from "next/navigation"
-
 // import type { blogSource, docsSource } from "@/lib/source"
 
 import { config } from "@/lib/config"
@@ -80,6 +79,7 @@ export async function generateOgImage(
       </div>
     </div>,
     {
+      module: import("@takumi-rs/wasm/next"),
       width: 1200,
       height: 630,
     },
