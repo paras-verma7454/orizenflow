@@ -30,9 +30,9 @@ COPY --from=builder /app/apps/api/package.json ./apps/api/
 # @packages/auth
 COPY --from=builder /app/packages/auth/dist/ ./packages/auth/dist/
 COPY --from=builder /app/packages/auth/package.json ./packages/auth/
-# @packages/env
-COPY --from=builder /app/packages/env/dist/ ./packages/env/dist/
-COPY --from=builder /app/packages/env/package.json ./packages/env/
+# @packages/env (lives in packages/config/)
+COPY --from=builder /app/packages/config/dist/ ./packages/config/dist/
+COPY --from=builder /app/packages/config/package.json ./packages/config/
 
 RUN mkdir -p .next && chown -R bun:bun .next
 

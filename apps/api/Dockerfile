@@ -29,9 +29,9 @@ COPY --from=builder /app/packages/auth/package.json ./packages/auth/
 # @packages/db
 COPY --from=builder /app/packages/db/dist/ ./packages/db/dist/
 COPY --from=builder /app/packages/db/package.json ./packages/db/
-# @packages/env
-COPY --from=builder /app/packages/env/dist/ ./packages/env/dist/
-COPY --from=builder /app/packages/env/package.json ./packages/env/
+# @packages/env (lives in packages/config/)
+COPY --from=builder /app/packages/config/dist/ ./packages/config/dist/
+COPY --from=builder /app/packages/config/package.json ./packages/config/
 
 USER bun
 CMD ["bun", "run", "start"]
