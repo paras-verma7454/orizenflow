@@ -20,22 +20,13 @@ RUN bun run build
 FROM base AS runner
 WORKDIR /app
 COPY --from=builder /app/node_modules/ ./node_modules/
-# @web/next
-COPY --from=builder /app/apps/web/.next/ ./.next/
-COPY --from=builder /app/apps/web/package.json .
-COPY --from=builder /app/apps/web/public/ ./public/
-# @api/hono
+COPY --from=builder /app/apps/web/ ./apps/web/
 COPY --from=builder /app/apps/api/dist/ ./apps/api/dist/
-COPY --from=builder /app/apps/api/package.json ./apps/api/
-# @packages/auth
-COPY --from=builder /app/packages/auth/dist/ ./packages/auth/dist/
-COPY --from=builder /app/packages/auth/package.json ./packages/auth/
-# @packages/env (lives in packages/config/)
-COPY --from=builder /app/packages/config/dist/ ./packages/config/dist/
-COPY --from=builder /app/packages/config/package.json ./packages/config/
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder /app/packages/ ./packages/
 
-RUN mkdir -p .next && chown -R bun:bun .next
+RUN mkdir -p apps/web/.next && chown -R bun:bun apps/web/.next
 
 USER bun
-CMD ["bun", "run", "start"]
+CMD ["bun", "--cwd", "apps/web", "run", "start"]
 EXPOSE 3000

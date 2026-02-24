@@ -32,7 +32,7 @@ services:
   worker:
     image: oven/bun:1
     working_dir: /app
-    command: sh -c "bun install && bun --cwd apps/worker dev"
+    command: sh -c "bun install --frozen-lockfile --ignore-scripts && bun --cwd apps/worker dev"
     volumes:
       - ./:/app
     environment:

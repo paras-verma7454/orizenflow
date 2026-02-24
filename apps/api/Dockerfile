@@ -20,19 +20,9 @@ RUN bun run build
 FROM base AS runner
 WORKDIR /app
 COPY --from=builder /app/node_modules/ ./node_modules/
-# @api/hono
-COPY --from=builder /app/apps/api/dist/ ./dist/
-COPY --from=builder /app/apps/api/package.json .
-# @packages/auth
-COPY --from=builder /app/packages/auth/dist/ ./packages/auth/dist/
-COPY --from=builder /app/packages/auth/package.json ./packages/auth/
-# @packages/db
-COPY --from=builder /app/packages/db/dist/ ./packages/db/dist/
-COPY --from=builder /app/packages/db/package.json ./packages/db/
-# @packages/env (lives in packages/config/)
-COPY --from=builder /app/packages/config/dist/ ./packages/config/dist/
-COPY --from=builder /app/packages/config/package.json ./packages/config/
+COPY --from=builder /app/apps/api/ ./apps/api/
+COPY --from=builder /app/packages/ ./packages/
 
 USER bun
-CMD ["bun", "run", "start"]
+CMD ["bun", "--cwd", "apps/api", "run", "start"]
 EXPOSE 4000
