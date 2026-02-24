@@ -28,5 +28,6 @@ COPY --from=builder /app/packages/ ./packages/
 RUN mkdir -p apps/web/.next && chown -R bun:bun apps/web/.next
 
 USER bun
-CMD ["bun", "--cwd", "apps/web", "run", "start"]
+WORKDIR /app/apps/web
+CMD ["bun", "run", "start"]
 EXPOSE 3000

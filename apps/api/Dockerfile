@@ -24,5 +24,6 @@ COPY --from=builder /app/apps/api/ ./apps/api/
 COPY --from=builder /app/packages/ ./packages/
 
 USER bun
-CMD ["bun", "--cwd", "apps/api", "run", "start"]
+WORKDIR /app/apps/api
+CMD ["bun", "run", "start"]
 EXPOSE 4000
