@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1765943437627,
+      "tag": "0000_zero_starter",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1769758907420,
+      "tag": "0001_better_auth_organization",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771767070732,
+      "tag": "0002_dusty_franklin_richards",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1771769000000,
+      "tag": "0003_job_type_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771782272096,
+      "tag": "0004_wide_nuke",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771785390974,
+      "tag": "0005_aspiring_morph",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771869000000,
+      "tag": "0006_candidate_evaluations",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771872600000,
+      "tag": "0007_candidate_eval_search_columns",
+      "breakpoints": true
+    }
+  ]
+}
