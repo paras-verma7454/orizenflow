@@ -2,16 +2,10 @@
   "name": "orizen-flow",
   "version": "0.0.13",
   "private": true,
-  "homepage": "https://github.com/nrjdalal/zerostarter#readme",
-  "bugs": "https://github.com/nrjdalal/zerostarter/issues",
+  "homepage": "https://github.com/paras-verma7454/orizenflow#readme",
+  "bugs": "https://github.com/paras-verma7454/orizenflow/issues",
   "license": "MIT",
-  "author": {
-    "name": "Neeraj Dalal",
-    "email": "admin@nrjdalal.com",
-    "url": "https://nrjdalal.com"
-  },
-  "repository": "nrjdalal/zerostarter",
-  "funding": "https://github.com/sponsors/nrjdalal",
+  "repository": "paras-verma7454/orizenflow",
   "workspaces": [
     "apps/*",
     "packages/*"

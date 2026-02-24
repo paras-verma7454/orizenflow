@@ -108,6 +108,8 @@ Optional integrations and controls:
 - v1: search, duplicate detection, resume preview, candidate timeline, complete worker-based evaluation flow
 - v2: role-adaptive scoring, skill extraction, evidence strength scoring, AI candidate comparison
 
-## Origin
+## Repository
 
-This project is derived from [nrjdalal/zerostarter](https://github.com/nrjdalal/zerostarter).
+GitHub: [paras-verma7454/orizenflow](https://github.com/paras-verma7454/orizenflow)
+
+Boilerplate base: [nrjdalal/zerostarter](https://github.com/nrjdalal/zerostarter)
