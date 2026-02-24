@@ -21,8 +21,8 @@ FROM base AS runner
 WORKDIR /app
 COPY --from=builder /app/node_modules/ ./node_modules/
 # @api/hono
-COPY --from=builder /app/api/hono/dist/ ./dist/
-COPY --from=builder /app/api/hono/package.json .
+COPY --from=builder /app/apps/api/dist/ ./dist/
+COPY --from=builder /app/apps/api/package.json .
 # @packages/auth
 COPY --from=builder /app/packages/auth/dist/ ./packages/auth/dist/
 COPY --from=builder /app/packages/auth/package.json ./packages/auth/

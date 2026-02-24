@@ -21,12 +21,12 @@ FROM base AS runner
 WORKDIR /app
 COPY --from=builder /app/node_modules/ ./node_modules/
 # @web/next
-COPY --from=builder /app/web/next/.next/ ./.next/
-COPY --from=builder /app/web/next/package.json .
-COPY --from=builder /app/web/next/public/ ./public/
+COPY --from=builder /app/apps/web/.next/ ./.next/
+COPY --from=builder /app/apps/web/package.json .
+COPY --from=builder /app/apps/web/public/ ./public/
 # @api/hono
-COPY --from=builder /app/api/hono/dist/ ./api/hono/dist/
-COPY --from=builder /app/api/hono/package.json ./api/hono/
+COPY --from=builder /app/apps/api/dist/ ./apps/api/dist/
+COPY --from=builder /app/apps/api/package.json ./apps/api/
 # @packages/auth
 COPY --from=builder /app/packages/auth/dist/ ./packages/auth/dist/
 COPY --from=builder /app/packages/auth/package.json ./packages/auth/
