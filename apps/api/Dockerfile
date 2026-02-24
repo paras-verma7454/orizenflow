@@ -19,9 +19,9 @@ RUN bun run build
 
 FROM base AS runner
 WORKDIR /app
-COPY --from=builder /app/node_modules/ ./node_modules/
-COPY --from=builder /app/apps/api/ ./apps/api/
-COPY --from=builder /app/packages/ ./packages/
+COPY --from=builder --chown=bun:bun /app/node_modules/ ./node_modules/
+COPY --from=builder --chown=bun:bun /app/apps/api/ ./apps/api/
+COPY --from=builder --chown=bun:bun /app/packages/ ./packages/
 
 USER bun
 WORKDIR /app/apps/api
