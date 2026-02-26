@@ -3,14 +3,20 @@ import type { Session } from "@packages/auth"
 import { BUILD_VERSION } from "@packages/env"
 import { env } from "@packages/env/api-hono"
 import { createCandidateEvaluationQueue } from "@packages/queue"
-import { and, desc, eq, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
 import { validator } from "hono/validator"
 import { z } from "zod"
 
 import { adminMiddleware, authMiddleware } from "@/middlewares"
-import { candidateEvaluations, db, jobApplications, jobs, member, organization, user } from "@packages/db"
+import { candidateEvaluations, db, jobApplications, jobs, member, organization, user, waitlist } from "@packages/db"
+import { EmailService } from "@packages/email"
+
+const emailService =
+  env.RESEND_API_KEY && env.RESEND_FROM_EMAIL
+    ? new EmailService({ apiKey: env.RESEND_API_KEY, from: env.RESEND_FROM_EMAIL })
+    : null
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -33,24 +39,31 @@ const getQueueSnapshot = async () => {
   }
 
   try {
-    const counts = await queue.getJobCounts("waiting", "active", "completed", "failed", "delayed", "paused")
-    const [oldestWaitingJob] = await queue.getJobs(["waiting"], 0, 0, true)
-    const oldestWaitingAgeSeconds = oldestWaitingJob
-      ? Math.max(0, Math.floor((Date.now() - oldestWaitingJob.timestamp) / 1000))
-      : null
+    const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
 
-    return {
-      connected: true,
-      counts: {
-        waiting: counts.waiting ?? 0,
-        active: counts.active ?? 0,
-        completed: counts.completed ?? 0,
-        failed: counts.failed ?? 0,
-        delayed: counts.delayed ?? 0,
-        paused: counts.paused ?? 0,
-      },
-      oldestWaitingAgeSeconds,
-    }
+    return await (Promise.race([
+      (async () => {
+        const counts = await queue.getJobCounts("waiting", "active", "completed", "failed", "delayed", "paused")
+        const [oldestWaitingJob] = await queue.getJobs(["waiting"], 0, 0, true)
+        const oldestWaitingAgeSeconds = oldestWaitingJob
+          ? Math.max(0, Math.floor((Date.now() - oldestWaitingJob.timestamp) / 1000))
+          : null
+
+        return {
+          connected: true,
+          counts: {
+            waiting: counts.waiting ?? 0,
+            active: counts.active ?? 0,
+            completed: counts.completed ?? 0,
+            failed: counts.failed ?? 0,
+            delayed: counts.delayed ?? 0,
+            paused: counts.paused ?? 0,
+          },
+          oldestWaitingAgeSeconds,
+        }
+      })(),
+      timeout(1000),
+    ]) as Promise<any>)
   } catch {
     return {
       connected: false,
@@ -298,6 +311,201 @@ export const adminRouter = new Hono<{ Variables: Session }>()
     },
   )
   .get(
+    "/organizations",
+    describeRoute({
+      tags: ["admin"],
+      description: "List all organizations",
+      responses: {
+        200: {
+          description: "Organizations list",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  data: z.array(
+                    z.object({
+                      id: z.string(),
+                      name: z.string(),
+                      slug: z.string(),
+                      logo: z.string().nullable(),
+                      createdAt: z.string().nullable(),
+                      jobCount: z.number(),
+                      jobs: z.array(
+                        z.object({
+                          id: z.string(),
+                          title: z.string(),
+                          status: z.string(),
+                          createdAt: z.string().nullable(),
+                        }),
+                      ),
+                    }),
+                  ),
+                  pagination: z.object({
+                    limit: z.number(),
+                    offset: z.number(),
+                    total: z.number(),
+                    hasMore: z.boolean(),
+                  }),
+                }),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validator("query", (value, c) => {
+      const parsed = listQuerySchema.safeParse(value)
+      if (!parsed.success) {
+        return c.json(
+          { error: { code: "VALIDATION_ERROR", message: "Invalid request", issues: parsed.error.issues } },
+          400,
+        )
+      }
+      return parsed.data
+    }),
+    async (c) => {
+      const { limit, offset } = c.req.valid("query")
+
+      const [rows, total] = await Promise.all([
+        db
+          .select({
+            id: organization.id,
+            name: organization.name,
+            slug: organization.slug,
+            logo: organization.logo,
+            createdAt: organization.createdAt,
+          })
+          .from(organization)
+          .orderBy(desc(organization.createdAt))
+          .limit(limit)
+          .offset(offset),
+        db.select({ count: sql<number>`count(*)`.mapWith(Number) }).from(organization),
+      ])
+      const organizationIds = rows.map((row) => row.id)
+      const jobsRows = organizationIds.length
+        ? await db
+          .select({
+            id: jobs.id,
+            title: jobs.title,
+            status: jobs.status,
+            organizationId: jobs.organizationId,
+            createdAt: jobs.createdAt,
+          })
+          .from(jobs)
+          .where(inArray(jobs.organizationId, organizationIds))
+          .orderBy(desc(jobs.createdAt))
+        : []
+
+      const jobsByOrganization = jobsRows.reduce<Record<string, typeof jobsRows>>((acc, job) => {
+        if (!acc[job.organizationId]) {
+          acc[job.organizationId] = []
+        }
+        acc[job.organizationId].push(job)
+        return acc
+      }, {})
+      const totalCount = total[0]?.count ?? 0
+
+      return c.json({
+        data: rows.map((row) => {
+          const orgJobs = jobsByOrganization[row.id] ?? []
+          return {
+            ...row,
+            createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+            jobCount: orgJobs.length,
+            jobs: orgJobs.map((job) => ({
+              id: job.id,
+              title: job.title,
+              status: job.status ?? "unknown",
+              createdAt: job.createdAt ? job.createdAt.toISOString() : null,
+            })),
+          }
+        }),
+        pagination: {
+          limit,
+          offset,
+          total: totalCount,
+          hasMore: offset + rows.length < totalCount,
+        },
+      })
+    },
+  )
+  .get(
+    "/waitlist",
+    describeRoute({
+      tags: ["admin"],
+      description: "List waitlist entries",
+      responses: {
+        200: {
+          description: "Waitlist entries list",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  data: z.array(
+                    z.object({
+                      id: z.string(),
+                      email: z.string(),
+                      status: z.string(),
+                      createdAt: z.string().nullable(),
+                    }),
+                  ),
+                  pagination: z.object({
+                    limit: z.number(),
+                    offset: z.number(),
+                    total: z.number(),
+                    hasMore: z.boolean(),
+                  }),
+                }),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    validator("query", (value, c) => {
+      const parsed = listQuerySchema.safeParse(value)
+      if (!parsed.success) {
+        return c.json(
+          { error: { code: "VALIDATION_ERROR", message: "Invalid request", issues: parsed.error.issues } },
+          400,
+        )
+      }
+      return parsed.data
+    }),
+    async (c) => {
+      const { limit, offset } = c.req.valid("query")
+
+      const [rows, total] = await Promise.all([
+        db
+          .select({
+            id: waitlist.id,
+            email: waitlist.email,
+            status: waitlist.status,
+            createdAt: waitlist.createdAt,
+          })
+          .from(waitlist)
+          .orderBy(desc(waitlist.createdAt))
+          .limit(limit)
+          .offset(offset),
+        db.select({ count: sql<number>`count(*)`.mapWith(Number) }).from(waitlist),
+      ])
+      const totalCount = total[0]?.count ?? 0
+
+      return c.json({
+        data: rows.map((row) => ({
+          ...row,
+          createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+        })),
+        pagination: {
+          limit,
+          offset,
+          total: totalCount,
+          hasMore: offset + rows.length < totalCount,
+        },
+      })
+    },
+  )
+  .get(
     "/queue",
     describeRoute({
       tags: ["admin"],
@@ -460,17 +668,17 @@ export const adminRouter = new Hono<{ Variables: Session }>()
           },
           evaluation: evaluation
             ? {
-                id: evaluation.id,
-                model: evaluation.model,
-                score: evaluation.score,
-                summary: evaluation.summary,
-                recommendation: evaluation.recommendation,
-                resumeTextExcerpt: evaluation.resumeTextExcerpt,
-                evidenceJson: evaluation.evidenceJson,
-                aiResponseJson: evaluation.aiResponseJson,
-                createdAt: evaluation.createdAt.toISOString(),
-                updatedAt: evaluation.updatedAt.toISOString(),
-              }
+              id: evaluation.id,
+              model: evaluation.model,
+              score: evaluation.score,
+              summary: evaluation.summary,
+              recommendation: evaluation.recommendation,
+              resumeTextExcerpt: evaluation.resumeTextExcerpt,
+              evidenceJson: evaluation.evidenceJson,
+              aiResponseJson: evaluation.aiResponseJson,
+              createdAt: evaluation.createdAt.toISOString(),
+              updatedAt: evaluation.updatedAt.toISOString(),
+            }
             : null,
         },
       })
@@ -517,16 +725,23 @@ export const adminRouter = new Hono<{ Variables: Session }>()
       }
 
       if (queue) {
+        const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
+
         try {
-          const client = await queue.client
-          const pingResponse = await client.ping()
-          if (pingResponse !== "PONG") redisStatus = "down"
+          await Promise.race([
+            (async () => {
+              const client = await queue.client
+              const pingResponse = await client.ping()
+              if (pingResponse !== "PONG") redisStatus = "down"
+            })(),
+            timeout(1000),
+          ])
         } catch {
           redisStatus = "down"
         }
 
         try {
-          await queue.waitUntilReady()
+          await Promise.race([queue.waitUntilReady(), timeout(1000)])
         } catch {
           queueStatus = "down"
         }
@@ -548,5 +763,49 @@ export const adminRouter = new Hono<{ Variables: Session }>()
           },
         },
       })
+    },
+  )
+  .post(
+    "/waitlist/send-live-now",
+    describeRoute({
+      tags: ["admin"],
+      description: "Send live-now email to all waitlisted users",
+      responses: {
+        200: {
+          description: "Emails queued for sending",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ success: z.boolean(), count: z.number() })),
+            },
+          },
+        },
+        500: {
+          description: "Failed to send emails",
+        },
+      },
+    }),
+    async (c) => {
+      if (!emailService) {
+        return c.json({ error: "Email service not configured" }, 500)
+      }
+
+      const pendingUsers = await db.select().from(waitlist).where(eq(waitlist.status, "pending"))
+
+      if (pendingUsers.length === 0) {
+        return c.json({ success: true, count: 0, message: "No pending users to notify" })
+      }
+
+      // Send emails in parallel (or we could use a queue for better reliability)
+      // For now, doing it simple.
+      const results = await Promise.allSettled(
+        pendingUsers.map(async (u) => {
+          await emailService.sendLiveNowEmail(u.email)
+          await db.update(waitlist).set({ status: "invited" }).where(eq(waitlist.id, u.id))
+        }),
+      )
+
+      const successCount = results.filter((r) => r.status === "fulfilled").length
+
+      return c.json({ success: true, count: successCount })
     },
   )

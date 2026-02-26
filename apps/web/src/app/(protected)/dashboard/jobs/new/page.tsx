@@ -87,7 +87,7 @@ export default function CreateJobPage() {
           jobType: values.jobType,
           location: values.location?.trim() || undefined,
           salaryRange: values.salaryRange?.trim() || undefined,
-          status: "draft" as JobStatus,
+          status: "open" as JobStatus,
         },
       });
       if (!res.ok) {
@@ -210,28 +210,49 @@ export default function CreateJobPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="cursor-pointer"
-          render={<Link href="/dashboard/jobs" />}
-        >
-          <RiArrowLeftLine />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Create Job Posting
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Define the role and requirements. You can edit details later.
-          </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="cursor-pointer"
+            render={<Link href="/dashboard/jobs" />}
+          >
+            <RiArrowLeftLine />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Create Job Posting
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Define the role and requirements. You can edit details later.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            type="submit"
+            form="create-job-form"
+            disabled={mutation.isPending}
+            className="cursor-pointer bg-blue-600 text-white hover:bg-blue-700"
+          >
+            {mutation.isPending ? "Creating..." : "Create Job"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="cursor-pointer border-blue-200 text-blue-700 hover:bg-blue-50"
+            render={<Link href="/dashboard/jobs" />}
+          >
+            Cancel
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px] max-w-5xl">
         {/* Main form */}
         <form
+          id="create-job-form"
           className="flex flex-col gap-6"
           onSubmit={(e) => {
             e.preventDefault();
@@ -426,25 +447,6 @@ export default function CreateJobPage() {
               </FieldGroup>
             </CardContent>
           </Card>
-
-          {/* Actions */}
-          <div className="flex items-center gap-3">
-            <Button
-              type="submit"
-              disabled={mutation.isPending}
-              className="cursor-pointer"
-            >
-              {mutation.isPending ? "Creating..." : "Create Job"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="cursor-pointer"
-              render={<Link href="/dashboard/jobs" />}
-            >
-              Cancel
-            </Button>
-          </div>
         </form>
 
         {/* Sidebar */}
@@ -465,7 +467,7 @@ export default function CreateJobPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-3 cursor-pointer"
+                  className="mt-3 cursor-pointer border-blue-200 text-blue-700 hover:bg-blue-50"
                   onClick={handleGenerate}
                   disabled={generateMutation.isPending}
                 >
@@ -478,17 +480,17 @@ export default function CreateJobPage() {
             </CardContent>
           </Card>
 
-          {/* Draft notice */}
+          {/* Status notice */}
           <Card className="bg-muted/30">
             <CardContent className="flex items-start gap-3 pt-4">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
                 <RiDraftLine className="size-4 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-sm font-medium">Saved as Draft</p>
+                <p className="text-sm font-medium">Starts as Open</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Your job will be created as a draft. You can publish it when
-                  you&apos;re ready from the job detail page.
+                  Your job is created as open by default. You can change the
+                  status anytime from the job detail page.
                 </p>
               </div>
             </CardContent>

@@ -19,6 +19,7 @@
     "@hono/standard-validator": "catalog:",
     "@packages/auth": "workspace:*",
     "@packages/db": "workspace:*",
+    "@packages/email": "workspace:*",
     "@packages/env": "workspace:*",
     "@packages/queue": "workspace:*",
     "@scalar/hono-api-reference": "catalog:",
@@ -26,7 +27,6 @@
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "hono-rate-limiter": "catalog:",
-    "resend": "catalog:",
     "sarvamai": "catalog:",
     "zod": "catalog:"
   },

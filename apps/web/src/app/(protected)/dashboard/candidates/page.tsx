@@ -48,7 +48,13 @@ import {
 } from "@/components/ui/tooltip";
 import { apiClient } from "@/lib/api/client";
 
-type CandidateStatus = "applied" | "screening" | "interview" | "offer" | "hired" | "rejected";
+type CandidateStatus =
+  | "applied"
+  | "screening"
+  | "interview"
+  | "offer"
+  | "hired"
+  | "rejected";
 type CandidateSource = "all" | "github" | "portfolio" | "resume";
 
 type Candidate = {
@@ -93,7 +99,9 @@ const parseSkills = (raw: string | null) => {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [] as string[];
-    return parsed.filter((item): item is string => typeof item === "string").slice(0, 4);
+    return parsed
+      .filter((item): item is string => typeof item === "string")
+      .slice(0, 4);
   } catch {
     return [] as string[];
   }
@@ -119,7 +127,9 @@ export default function CandidatesPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [semanticQuery, setSemanticQuery] = useState("");
-  const [semanticResults, setSemanticResults] = useState<Candidate[] | null>(null);
+  const [semanticResults, setSemanticResults] = useState<Candidate[] | null>(
+    null,
+  );
   const [offset, setOffset] = useState(0);
 
   const { data: jobs = [] } = useQuery({
@@ -146,7 +156,18 @@ export default function CandidatesPage() {
       ...(dateFrom ? { dateFrom } : {}),
       ...(dateTo ? { dateTo } : {}),
     }),
-    [dateFrom, dateTo, jobId, maxScore, minScore, offset, search, skills, source, status],
+    [
+      dateFrom,
+      dateTo,
+      jobId,
+      maxScore,
+      minScore,
+      offset,
+      search,
+      skills,
+      source,
+      status,
+    ],
   );
 
   const { data, isLoading } = useQuery({
@@ -168,7 +189,13 @@ export default function CandidatesPage() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, nextStatus }: { id: string; nextStatus: CandidateStatus }) => {
+    mutationFn: async ({
+      id,
+      nextStatus,
+    }: {
+      id: string;
+      nextStatus: CandidateStatus;
+    }) => {
       const res = await apiClient.v1.candidates[":id"].status.$patch({
         param: { id },
         json: { status: nextStatus },
@@ -242,11 +269,17 @@ export default function CandidatesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Candidates</h1>
           <p className="text-sm text-muted-foreground">
-            Search and filter by skills, score, source, application date, and semantic intent.
+            Search and filter by skills, score, source, application date, and
+            semantic intent.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="cursor-pointer" onClick={() => bulkReviewMutation.mutate()} disabled={bulkReviewMutation.isPending}>
+          <Button
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => bulkReviewMutation.mutate()}
+            disabled={bulkReviewMutation.isPending}
+          >
             {bulkReviewMutation.isPending ? "Queueing..." : "Bulk Review"}
           </Button>
         </div>
@@ -255,166 +288,180 @@ export default function CandidatesPage() {
       <Card>
         <CardContent className="space-y-2.5 py-3 sm:space-y-3 sm:py-4">
           <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Input
-            placeholder="Search name, email, resume text"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setOffset(0);
-              setSemanticResults(null);
-            }}
-          />
-          <Input
-            placeholder="Skills (e.g. React, Node.js)"
-            value={skills}
-            onChange={(event) => {
-              setSkills(event.target.value);
-              setOffset(0);
-              setSemanticResults(null);
-            }}
-          />
-          <Input
-            placeholder="Semantic query"
-            value={semanticQuery}
-            onChange={(event) => setSemanticQuery(event.target.value)}
-          />
-          <div className="flex gap-2">
-            <Button
-              className="w-full cursor-pointer"
-              variant="outline"
-              disabled={!semanticQuery.trim() || semanticMutation.isPending}
-              onClick={() => semanticMutation.mutate()}
-            >
-              <RiRobot2Line className="size-4" />
-              Semantic Search
-            </Button>
-            {semanticResults ? (
-              <Button className="cursor-pointer" variant="ghost" onClick={() => setSemanticResults(null)}>
-                Clear
+            <Input
+              placeholder="Search name, email, resume text"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setOffset(0);
+                setSemanticResults(null);
+              }}
+            />
+            <Input
+              placeholder="Skills (e.g. React, Node.js)"
+              value={skills}
+              onChange={(event) => {
+                setSkills(event.target.value);
+                setOffset(0);
+                setSemanticResults(null);
+              }}
+            />
+            <Input
+              placeholder="Semantic query"
+              value={semanticQuery}
+              onChange={(event) => setSemanticQuery(event.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button
+                className="w-full cursor-pointer"
+                variant="default"
+                disabled={!semanticQuery.trim() || semanticMutation.isPending}
+                onClick={() => semanticMutation.mutate()}
+              >
+                <RiRobot2Line className="size-4" />
+                Semantic Search
               </Button>
-            ) : null}
-          </div>
+              {semanticResults ? (
+                <Button
+                  className="cursor-pointer"
+                  variant="ghost"
+                  onClick={() => setSemanticResults(null)}
+                >
+                  Clear
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <Select
-            value={jobId}
-            onValueChange={(value) => {
-              setJobId(value ?? "all");
-              setOffset(0);
-              setSemanticResults(null);
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <span className="truncate text-sm">
-                {jobId === "all" ? "All jobs" : jobs.find((job) => job.id === jobId)?.title ?? "All jobs"}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All jobs</SelectItem>
-              {jobs.map((job) => (
-                <SelectItem key={job.id} value={job.id}>
-                  {job.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              setStatus((value as CandidateStatus | null) ?? "all");
-              setOffset(0);
-              setSemanticResults(null);
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <span className="truncate text-sm">
-                {status === "all"
-                  ? "All statuses"
-                  : statusOptions.find((option) => option.value === status)?.label ?? "All statuses"}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {statusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={source}
-            onValueChange={(value) => {
-              setSource((value as CandidateSource | null) ?? "all");
-              setOffset(0);
-              setSemanticResults(null);
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <span className="truncate text-sm">{sourceLabelMap[source]}</span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All sources</SelectItem>
-              <SelectItem value="github">GitHub</SelectItem>
-              <SelectItem value="portfolio">Portfolio</SelectItem>
-              <SelectItem value="resume">Resume</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="Min score"
-              type="number"
-              min={0}
-              max={100}
-              value={minScore}
-              onChange={(event) => {
-                setMinScore(event.target.value);
+            <Select
+              value={jobId}
+              onValueChange={(value) => {
+                setJobId(value ?? "all");
                 setOffset(0);
                 setSemanticResults(null);
               }}
-            />
-            <Input
-              placeholder="Max score"
-              type="number"
-              min={0}
-              max={100}
-              value={maxScore}
-              onChange={(event) => {
-                setMaxScore(event.target.value);
-                setOffset(0);
-                setSemanticResults(null);
-              }}
-            />
-          </div>
+            >
+              <SelectTrigger className="w-full">
+                <span className="truncate text-sm">
+                  {jobId === "all"
+                    ? "All jobs"
+                    : (jobs.find((job) => job.id === jobId)?.title ??
+                      "All jobs")}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All jobs</SelectItem>
+                {jobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>
+                    {job.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value);
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                setStatus((value as CandidateStatus | null) ?? "all");
                 setOffset(0);
                 setSemanticResults(null);
               }}
-            />
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value);
-                setOffset(0);
-                setSemanticResults(null);
-              }}
-            />
-          </div>
+            >
+              <SelectTrigger className="w-full">
+                <span className="truncate text-sm">
+                  {status === "all"
+                    ? "All statuses"
+                    : (statusOptions.find((option) => option.value === status)
+                        ?.label ?? "All statuses")}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <div className="text-muted-foreground flex items-center text-xs sm:text-sm">
-            {isLoading ? "Loading candidates..." : semanticResults ? `${semanticResults.length} semantic matches` : `${total} total candidates`}
-          </div>
+            <Select
+              value={source}
+              onValueChange={(value) => {
+                setSource((value as CandidateSource | null) ?? "all");
+                setOffset(0);
+                setSemanticResults(null);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <span className="truncate text-sm">
+                  {sourceLabelMap[source]}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sources</SelectItem>
+                <SelectItem value="github">GitHub</SelectItem>
+                <SelectItem value="portfolio">Portfolio</SelectItem>
+                <SelectItem value="resume">Resume</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="Min score"
+                type="number"
+                min={0}
+                max={100}
+                value={minScore}
+                onChange={(event) => {
+                  setMinScore(event.target.value);
+                  setOffset(0);
+                  setSemanticResults(null);
+                }}
+              />
+              <Input
+                placeholder="Max score"
+                type="number"
+                min={0}
+                max={100}
+                value={maxScore}
+                onChange={(event) => {
+                  setMaxScore(event.target.value);
+                  setOffset(0);
+                  setSemanticResults(null);
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  setOffset(0);
+                  setSemanticResults(null);
+                }}
+              />
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  setOffset(0);
+                  setSemanticResults(null);
+                }}
+              />
+            </div>
+
+            <div className="text-muted-foreground flex items-center text-xs sm:text-sm">
+              {isLoading
+                ? "Loading candidates..."
+                : semanticResults
+                  ? `${semanticResults.length} semantic matches`
+                  : `${total} total candidates`}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -433,7 +480,8 @@ export default function CandidatesPage() {
                 </EmptyMedia>
                 <EmptyTitle>No candidates found</EmptyTitle>
                 <EmptyDescription>
-                  Try changing filters or use semantic search with a broader query.
+                  Try changing filters or use semantic search with a broader
+                  query.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -465,7 +513,9 @@ export default function CandidatesPage() {
                           {candidate.name}
                           <RiArrowRightLine className="size-3.5 text-muted-foreground" />
                         </Link>
-                        <span className="text-xs text-muted-foreground">{candidate.email}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {candidate.email}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>{candidate.job.title}</TableCell>
@@ -498,11 +548,14 @@ export default function CandidatesPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {new Date(candidate.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {new Date(candidate.createdAt).toLocaleDateString(
+                        "en-US",
+                        {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        },
+                      )}
                     </TableCell>
                     <TableCell>
                       <TooltipProvider>
@@ -558,8 +611,12 @@ export default function CandidatesPage() {
                               <TooltipContent>Portfolio</TooltipContent>
                             </Tooltip>
                           ) : null}
-                          {!candidate.linkedinUrl && !candidate.githubUrl && !candidate.portfolioUrl ? (
-                            <span className="text-xs text-muted-foreground">-</span>
+                          {!candidate.linkedinUrl &&
+                          !candidate.githubUrl &&
+                          !candidate.portfolioUrl ? (
+                            <span className="text-xs text-muted-foreground">
+                              -
+                            </span>
                           ) : null}
                         </div>
                       </TooltipProvider>
@@ -583,13 +640,17 @@ export default function CandidatesPage() {
             {!semanticResults ? (
               <div className="mt-4 flex items-center justify-between gap-3">
                 <div className="text-muted-foreground text-sm">
-                  Showing {pagination ? pagination.offset + 1 : 0} to {pagination ? pagination.offset + candidates.length : 0} of {total}
+                  Showing {pagination ? pagination.offset + 1 : 0} to{" "}
+                  {pagination ? pagination.offset + candidates.length : 0} of{" "}
+                  {total}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     disabled={offset === 0}
-                    onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
+                    onClick={() =>
+                      setOffset((current) => Math.max(0, current - PAGE_SIZE))
+                    }
                   >
                     Previous
                   </Button>

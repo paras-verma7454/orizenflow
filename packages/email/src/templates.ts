@@ -1,0 +1,31 @@
+export const welcomeEmailTemplate = (name?: string) => `
+  <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 24px; color: #0F172A;">
+    <div style="margin-bottom: 32px;">
+      <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 4px;">Orizen Flow</h1>
+      <p style="font-size: 13px; color: #64748B; margin: 0;">Evidence-based hiring CRM</p>
+    </div>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${name || 'there'},</p>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Thanks for joining our early access waitlist.</p>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 16px;">We're building a new way to evaluate candidates — using real technical evidence from resumes, portfolios, and GitHub contributions instead of keyword matching.</p>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 24px;">We'll reach out when your spot is ready.</p>
+    <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+    <p style="font-size: 12px; color: #94A3B8; margin: 0;">Orizen Flow · Evidence-based hiring</p>
+  </div>
+`;
+
+export const liveNowEmailTemplate = () => `
+  <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 24px; color: #0F172A;">
+    <div style="margin-bottom: 32px;">
+      <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 4px;">Orizen Flow</h1>
+      <p style="font-size: 13px; color: #64748B; margin: 0;">Evidence-based hiring CRM</p>
+    </div>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Great news!</p>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Orizen Flow is now live and ready for you to explore.</p>
+    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 24px;">Start evaluating candidates with real evidence today.</p>
+    <div style="margin-bottom: 32px;">
+      <a href="https://orizenflow.luffytaro.me" style="background-color: #0F172A; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;">Get Started Now</a>
+    </div>
+    <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+    <p style="font-size: 12px; color: #94A3B8; margin: 0;">Orizen Flow · Evidence-based hiring</p>
+  </div>
+`;

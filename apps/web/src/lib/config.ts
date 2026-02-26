@@ -28,7 +28,7 @@ export const config = {
 
   // Social links
   social: {
-    github: "https://github.com/orizenflow",
+    github: "https://github.com/paras-verma7454/orizenflow",
   },
 
   // Feature flags

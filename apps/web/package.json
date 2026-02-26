@@ -6,7 +6,9 @@
     "build": "next build",
     "check-types": "tsc --noEmit",
     "dev": "next dev",
-    "start": "next start"
+    "start": "next start",
+    "remotion:build": "remotion render src/components/Video/index.tsx PromoVideo out/video.mp4",
+    "remotion:preview": "remotion preview src/components/Video/index.tsx"
   },
   "dependencies": {
     "@api/hono": "workspace:*",
@@ -15,6 +17,7 @@
     "@packages/auth": "workspace:*",
     "@packages/env": "workspace:*",
     "@posthog/react": "catalog:",
+    "@radix-ui/react-tabs": "catalog:",
     "@remixicon/react": "catalog:",
     "@takumi-rs/image-response": "catalog:",
     "@takumi-rs/wasm": "catalog:",
@@ -46,6 +49,7 @@
     "react-resizable-panels": "catalog:",
     "recharts": "catalog:",
     "remark-gfm": "catalog:",
+    "remotion": "^4.0.429",
     "shiki": "catalog:",
     "sonner": "catalog:",
     "tailwind-merge": "^3.5.0",
@@ -58,6 +62,7 @@
     "@fontsource-variable/jetbrains-mono": "catalog:",
     "@fontsource-variable/newsreader": "catalog:",
     "@packages/tsconfig": "workspace:*",
+    "@remotion/cli": "^4.0.429",
     "@tailwindcss/postcss": "catalog:",
     "@tanstack/react-query-devtools": "catalog:",
     "@types/bun": "catalog:",
