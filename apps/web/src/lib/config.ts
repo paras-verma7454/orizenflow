@@ -32,7 +32,9 @@ export const config = {
   },
 
   // Feature flags
-  features: {},
+  features: {
+    authDisabled: env.NEXT_PUBLIC_NODE_ENV === "production",
+  },
 
   // Sidebar navigation configuration (minimalist for now)
   sidebar: {

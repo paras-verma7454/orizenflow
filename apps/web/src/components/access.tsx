@@ -1,31 +1,45 @@
-"use client"
+"use client";
 
-import { RiGithubFill, RiGoogleFill, RiLayoutGridFill, RiLoaderLine } from "@remixicon/react"
-import { useForm } from "@tanstack/react-form"
-import { useState } from "react"
-import { toast } from "sonner"
-import { z } from "zod"
+import {
+  RiGithubFill,
+  RiGoogleFill,
+  RiLayoutGridFill,
+  RiLoaderLine,
+} from "@remixicon/react";
+import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
+import { toast } from "sonner";
+import { z } from "zod";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { authClient } from "@/lib/auth/client"
-import { config } from "@/lib/config"
-import { GithubIcon } from "@/components/ui/github"
+} from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { authClient } from "@/lib/auth/client";
+import { config } from "@/lib/config";
+import { GithubIcon } from "@/components/ui/github";
 
 const formSchema = z.object({
   email: z.email({ message: "Please enter a valid email address." }),
-})
+});
 
 export function Access() {
-  const [loader, setLoader] = useState<"email" | "github" | "google" | null>(null)
+  if (config.features.authDisabled) return null;
+
+  const [loader, setLoader] = useState<"email" | "github" | "google" | null>(
+    null,
+  );
 
   const form = useForm({
     defaultValues: {
@@ -37,25 +51,27 @@ export function Access() {
       onBlur: formSchema,
     },
     onSubmit: async ({ value }) => {
-      setLoader("email")
+      setLoader("email");
       const res = await authClient.signIn.magicLink({
         email: value.email,
         callbackURL: `${config.app.url}/dashboard`,
-      })
+      });
       if (res.error) {
-        toast.error(res.error.message || "Provider Not Found")
-        setLoader(null)
+        toast.error(res.error.message || "Provider Not Found");
+        setLoader(null);
       } else {
-        toast.success("Check your email for the magic link!")
-        setLoader(null)
+        toast.success("Check your email for the magic link!");
+        setLoader(null);
       }
-      form.reset()
+      form.reset();
     },
-  })
+  });
 
   return (
     <Dialog>
-      <DialogTrigger render={<Button className="w-24 cursor-pointer" variant="outline" />}>
+      <DialogTrigger
+        render={<Button className="w-24 cursor-pointer" variant="outline" />}
+      >
         Login
       </DialogTrigger>
       <DialogContent className="max-w-md sm:max-w-md" initialFocus={false}>
@@ -70,20 +86,23 @@ export function Access() {
               </div>
               <span className="sr-only">{config.app.name}</span>
             </div>
-            <h1 className="text-xl font-semibold">Welcome to {config.app.name}</h1>
+            <h1 className="text-xl font-semibold">
+              Welcome to {config.app.name}
+            </h1>
           </div>
           <form
             id="email"
             className="space-y-4"
             onSubmit={(e) => {
-              e.preventDefault()
-              form.handleSubmit()
+              e.preventDefault();
+              form.handleSubmit();
             }}
           >
             <FieldGroup>
               <form.Field name="email">
                 {(field) => {
-                  const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid;
                   return (
                     <Field data-invalid={isInvalid}>
                       <FieldLabel htmlFor={field.name}>Email</FieldLabel>
@@ -99,9 +118,11 @@ export function Access() {
                         placeholder="admin@orizenflow.com"
                         disabled={loader === "email"}
                       />
-                      {isInvalid && <FieldError errors={field.state.meta.errors} />}
+                      {isInvalid && (
+                        <FieldError errors={field.state.meta.errors} />
+                      )}
                     </Field>
-                  )
+                  );
                 }}
               </form.Field>
             </FieldGroup>
@@ -112,7 +133,9 @@ export function Access() {
               className="w-full cursor-pointer"
               disabled={loader === "email"}
             >
-              {loader === "email" ? <RiLoaderLine className="size-5 animate-spin" /> : null}
+              {loader === "email" ? (
+                <RiLoaderLine className="size-5 animate-spin" />
+              ) : null}
               Sign in/up
             </Button>
           </form>
@@ -127,14 +150,14 @@ export function Access() {
               type="button"
               className="w-full cursor-pointer"
               onClick={async () => {
-                setLoader("github")
+                setLoader("github");
                 const res = await authClient.signIn.social({
                   provider: "github",
                   callbackURL: `${config.app.url}/dashboard`,
-                })
+                });
                 if (res.error) {
-                  toast.error(res.error.message)
-                  setLoader(null)
+                  toast.error(res.error.message);
+                  setLoader(null);
                 }
               }}
               disabled={loader === "github"}
@@ -151,14 +174,14 @@ export function Access() {
               type="button"
               className="w-full cursor-pointer"
               onClick={async () => {
-                setLoader("google")
+                setLoader("google");
                 const res = await authClient.signIn.social({
                   provider: "google",
                   callbackURL: `${config.app.url}/dashboard`,
-                })
+                });
                 if (res.error) {
-                  toast.error(res.error.message)
-                  setLoader(null)
+                  toast.error(res.error.message);
+                  setLoader(null);
                 }
               }}
               disabled={loader === "google"}
@@ -171,12 +194,13 @@ export function Access() {
               Continue with Google
             </Button>
             <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4">
-              By clicking continue, you agree to our <a href="#">Terms of Service</a> and{" "}
+              By clicking continue, you agree to our{" "}
+              <a href="#">Terms of Service</a> and{" "}
               <a href="#">Privacy Policy</a>.
             </div>
           </div>
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
