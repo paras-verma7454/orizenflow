@@ -1,6 +1,7 @@
 import { candidateEvaluations, db, jobApplications, jobs } from "@packages/db"
 import { and, eq } from "drizzle-orm"
 import { SarvamAIClient } from "sarvamai"
+import { convertHtmlToMarkdown, extractLinksByType, resolveUrl } from "./html-to-markdown"
 
 type CandidateJobPayload = {
   applicationId: string
@@ -339,19 +340,15 @@ const stripHtml = (html: string) => {
     .trim()
 }
 
-const extractHrefLinks = (html: string, baseUrl: string) => {
-  const links: string[] = []
-  const regex = /href=["']([^"']+)["']/gi
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(html)) !== null) {
-    try {
-      const resolved = new URL(match[1], baseUrl)
-      links.push(resolved.toString())
-    } catch {
-      continue
-    }
+const extractAllLinks = (html: string, baseUrl: string): string[] => {
+  try {
+    const { navigation, pagination, content } = extractLinksByType(html, baseUrl)
+    // Prioritize pagination, then navigation, then content links
+    const allLinks = [...new Set([...pagination, ...navigation, ...content])]
+    return allLinks
+  } catch {
+    return []
   }
-  return links
 }
 
 const buildGithubHeaders = (token?: string) => {
@@ -443,14 +440,18 @@ const scrapePortfolio = async (rootUrl: string) => {
 
     const html = await fetchLimitedText(next)
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
-    const textSnippet = stripHtml(html).slice(0, 1200)
+    // Convert HTML to markdown for better LLM context
+    const markdown = convertHtmlToMarkdown(html)
+    const textSnippet = markdown.slice(0, 1200)
     pages.push({
       url: next,
       title: titleMatch?.[1]?.trim(),
       textSnippet,
     })
 
-    for (const link of extractHrefLinks(html, next)) {
+    // Extract links with smart categorization (pagination, navigation, content)
+    const allLinks = extractAllLinks(html, next)
+    for (const link of allLinks) {
       if (visited.has(link)) continue
       const normalized = normalizeUrl(link)
       if (!normalized) continue
@@ -529,30 +530,30 @@ const trimText = (value: string | null | undefined, max = 600) => {
 const compactEnrichment = (enrichment: EnrichmentResult) => {
   const github = enrichment.github
     ? {
-        profile: githubProfileCompact(enrichment.github.profile),
-        topRepos: enrichment.github.topRepos.slice(0, 3).map((repo) => ({
-          name: repo.name,
-          url: repo.url,
-          stars: repo.stars,
-          forks: repo.forks,
-          languages: repo.languages.slice(0, 3),
-          readmeSnippet: trimText(repo.readmeSnippet, 180),
-        })),
-        languages: Object.entries(enrichment.github.languages)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 6),
-      }
+      profile: githubProfileCompact(enrichment.github.profile),
+      topRepos: enrichment.github.topRepos.slice(0, 3).map((repo) => ({
+        name: repo.name,
+        url: repo.url,
+        stars: repo.stars,
+        forks: repo.forks,
+        languages: repo.languages.slice(0, 3),
+        readmeSnippet: trimText(repo.readmeSnippet, 180),
+      })),
+      languages: Object.entries(enrichment.github.languages)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6),
+    }
     : null
 
   const portfolio = enrichment.portfolio
     ? {
-        rootUrl: enrichment.portfolio.rootUrl,
-        pages: enrichment.portfolio.pages.slice(0, 3).map((page) => ({
-          url: page.url,
-          title: trimText(page.title, 100),
-          textSnippet: trimText(page.textSnippet, 220),
-        })),
-      }
+      rootUrl: enrichment.portfolio.rootUrl,
+      pages: enrichment.portfolio.pages.slice(0, 3).map((page) => ({
+        url: page.url,
+        title: trimText(page.title, 100),
+        textSnippet: trimText(page.textSnippet, 220),
+      })),
+    }
     : null
 
   return {

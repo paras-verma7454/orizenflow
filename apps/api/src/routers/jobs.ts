@@ -8,7 +8,14 @@ import { describeRoute, resolver } from "hono-openapi"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
 
+import { generateShortId } from "@/lib/utils"
 import { authMiddleware } from "@/middlewares"
+
+const jobQuestionSchema = z.object({
+  id: z.string().min(1).max(80),
+  prompt: z.string().trim().min(1).max(300),
+  required: z.boolean().default(false),
+})
 
 const createJobSchema = z.object({
   title: z.string().min(1).max(200),
@@ -17,6 +24,7 @@ const createJobSchema = z.object({
   jobType: z.enum(["remote", "hybrid", "on-site"]).default("on-site"),
   location: z.string().optional(),
   salaryRange: z.string().optional(),
+  questions: z.array(jobQuestionSchema).max(20).default([]),
 })
 
 const updateJobSchema = createJobSchema.partial()
@@ -44,6 +52,15 @@ const createJobSlug = (title: string) => {
   const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 6)
   return `${base || "job"}-${suffix}`
 }
+
+const stripMarkdownHeadingHashes = (value: string) =>
+  value
+    .split("\n")
+    .map((line) => {
+      const match = line.match(/^\s{0,3}#{1,6}\s+(.*)$/)
+      return match ? match[1] : line
+    })
+    .join("\n")
 
 const noActiveOrganizationError = {
   error: {
@@ -75,7 +92,7 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
       const orgId = session.activeOrganizationId
 
       if (!orgId) {
-        return c.json({ data: [] })
+        return c.json(noActiveOrganizationError, 403)
       }
 
       const data = await db
@@ -127,9 +144,16 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
       }
 
       const data = c.req.valid("json")
+      const { questions, ...jobData } = data
       const [inserted] = await db
         .insert(jobs)
-        .values({ ...data, slug: createJobSlug(data.title), organizationId: orgId })
+        .values({
+          ...jobData,
+          shortId: generateShortId(),
+          questionsJson: JSON.stringify(questions),
+          slug: createJobSlug(data.title),
+          organizationId: orgId,
+        })
         .returning()
 
       return c.json({ data: inserted }, 201)
@@ -180,7 +204,8 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
         "Generate a high-quality job posting from the provided hiring context.",
         "Return valid JSON only (no markdown block, no explanation) using this exact shape:",
         '{"title":"...","description":"...","salaryRange":"..."}',
-        "Description must be markdown-friendly and include sections: About the Role, Responsibilities, Requirements, Nice to Have, Benefits.",
+        "Description must include sections: About the Role, Responsibilities, Requirements, Nice to Have, Benefits.",
+        "Do not use markdown heading syntax like #, ##, or ### anywhere in the description.",
         "Keep title concise and don't mention job location in title . The salaryRange should be a string like '$100k - $150k/yr' or '₹10k/month  or 12LPA' based on job location if location is not given use USA standard and market-standard based on the job location and type if present like if it's a india job can't give USA standard salary etc.",
         "",
         "IMPORTANT: Consider these work arrangement details:",
@@ -232,7 +257,12 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
         return c.json({ error: { code: "AI_PARSE_ERROR", message: "Failed to parse AI response" } }, 502)
       }
 
-      return c.json({ data: parsed.data })
+      const sanitized = {
+        ...parsed.data,
+        description: stripMarkdownHeadingHashes(parsed.data.description),
+      }
+
+      return c.json({ data: sanitized })
     },
   )
   .get(
@@ -317,9 +347,15 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
         return c.json({ error: { code: "NOT_FOUND", message: "Job not found" } }, 404)
       }
 
+      const { questions, ...jobData } = data
       const [updated] = await db
         .update(jobs)
-        .set({ ...data, slug: existing.slug || createJobSlug(data.title || "job"), updatedAt: new Date() })
+        .set({
+          ...jobData,
+          ...(questions ? { questionsJson: JSON.stringify(questions) } : {}),
+          slug: existing.slug || createJobSlug(data.title || "job"),
+          updatedAt: new Date(),
+        })
         .where(and(eq(jobs.id, id), eq(jobs.organizationId, orgId)))
         .returning()
 

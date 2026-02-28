@@ -9,11 +9,11 @@ import { config } from "@/lib/config";
 import "@/app/globals.css";
 
 function getOgImagePath(): string {
-  const staticOgPath = join(process.cwd(), "public", "og", "home.png");
+  const staticOgPath = join(process.cwd(), "public", "og", "hero.png");
   if (existsSync(staticOgPath)) {
-    return "/og/home.png";
+    return "/og/hero.png";
   }
-  return "/api/og/home";
+  return "/api/og/hero";
 }
 
 const ogImagePath = getOgImagePath();

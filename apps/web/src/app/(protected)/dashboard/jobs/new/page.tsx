@@ -18,6 +18,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -66,7 +67,25 @@ const formSchema = z.object({
   jobType: z.enum(["remote", "hybrid", "on-site"]),
   location: z.string(),
   salaryRange: z.string(),
+  questions: z.array(
+    z.object({
+      id: z.string().min(1),
+      prompt: z.string().trim().min(1, "Question cannot be empty").max(300),
+      required: z.boolean(),
+    }),
+  ),
 });
+
+type CreateJobFormValues = z.infer<typeof formSchema>;
+
+const normalizeQuestions = (questions: CreateJobFormValues["questions"]) =>
+  questions
+    .map((question) => ({
+      id: question.id,
+      prompt: question.prompt.trim(),
+      required: question.required,
+    }))
+    .filter((question) => question.prompt.length > 0);
 
 const TIPS = [
   "Use a clear, specific title that candidates search for",
@@ -77,9 +96,10 @@ const TIPS = [
 
 export default function CreateJobPage() {
   const router = useRouter();
+  const [newQuestionPrompt, setNewQuestionPrompt] = useState("");
 
   const mutation = useMutation({
-    mutationFn: async (values: z.infer<typeof formSchema>) => {
+    mutationFn: async (values: CreateJobFormValues) => {
       const res = await apiClient.v1.jobs.$post({
         json: {
           title: values.title.trim(),
@@ -87,6 +107,7 @@ export default function CreateJobPage() {
           jobType: values.jobType,
           location: values.location?.trim() || undefined,
           salaryRange: values.salaryRange?.trim() || undefined,
+          questions: normalizeQuestions(values.questions),
           status: "open" as JobStatus,
         },
       });
@@ -154,7 +175,8 @@ export default function CreateJobPage() {
       jobType: "on-site" as JobType,
       location: "",
       salaryRange: "",
-    },
+      questions: [] as CreateJobFormValues["questions"],
+    } as CreateJobFormValues,
     validators: {
       onSubmit: formSchema,
     },
@@ -445,6 +467,110 @@ export default function CreateJobPage() {
                   )}
                 </form.Field>
               </FieldGroup>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary/10">
+                  <RiFileTextLine className="size-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>Screening Questions</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <Separator />
+            <CardContent className="pt-4">
+              <form.Field name="questions" mode="array">
+                {(field) => (
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="new-question-prompt">
+                        Add question
+                      </FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          id="new-question-prompt"
+                          placeholder="e.g. Why are you a fit for this role?"
+                          value={newQuestionPrompt}
+                          onChange={(event) =>
+                            setNewQuestionPrompt(event.target.value)
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            const prompt = newQuestionPrompt.trim();
+                            if (!prompt) return;
+                            field.pushValue({
+                              id: crypto.randomUUID(),
+                              prompt,
+                              required: false,
+                            });
+                            setNewQuestionPrompt("");
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <FieldDescription>
+                        Add optional or required questions candidates answer on
+                        the apply form.
+                      </FieldDescription>
+                    </Field>
+
+                    {field.state.value.length > 0 ? (
+                      <div className="space-y-3">
+                        {field.state.value.map((question, index) => (
+                          <div
+                            key={question.id}
+                            className="space-y-2 rounded-lg border p-3"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={question.prompt}
+                                onChange={(event) =>
+                                  field.replaceValue(index, {
+                                    ...question,
+                                    prompt: event.target.value,
+                                  })
+                                }
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => field.removeValue(index)}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                checked={question.required}
+                                onChange={(event) =>
+                                  field.replaceValue(index, {
+                                    ...question,
+                                    required: event.target.checked,
+                                  })
+                                }
+                              />
+                              Required question
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No custom questions yet.
+                      </p>
+                    )}
+                  </FieldGroup>
+                )}
+              </form.Field>
             </CardContent>
           </Card>
         </form>

@@ -20,7 +20,7 @@ import {
 import { apiClient } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
+import { cn, shortId } from "@/lib/utils";
 
 type Organization = {
   id: string;
@@ -184,7 +184,7 @@ export default function AdminOrganizationsPage() {
                               {org.name}
                             </p>
                             <p className="text-[11px] text-muted-foreground font-mono">
-                              {org.id}
+                              {shortId(org.id)}
                             </p>
                           </div>
                         </TableCell>

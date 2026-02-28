@@ -57,6 +57,20 @@
       "when": 1771872600000,
       "tag": "0007_candidate_eval_search_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772273293293,
+      "tag": "0008_deep_wrecker",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772279069133,
+      "tag": "0009_military_ma_gnuci",
+      "breakpoints": true
     }
   ]
 }

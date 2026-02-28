@@ -11,8 +11,11 @@ import {
 } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { LinkIcon, type LinkIconHandle } from "@/components/ui/link";
 
 import {
   AlertDialog,
@@ -46,9 +49,12 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiClient } from "@/lib/api/client";
+import { config } from "@/lib/config";
+import { shortId } from "@/lib/utils";
 
 interface Job {
   id: string;
+  shortId: string;
   title: string;
   description: string;
   organizationId: string;
@@ -81,6 +87,21 @@ function statusVariant(status: string) {
       return "outline" as const;
     default:
       return "secondary" as const;
+  }
+}
+
+function statusClassName(status: string) {
+  switch (status) {
+    case "open":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300";
+    case "draft":
+      return "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300";
+    case "closed":
+      return "";
+    case "filled":
+      return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300";
+    default:
+      return "";
   }
 }
 
@@ -128,10 +149,14 @@ function JobCard({ job }: { job: Job }) {
           >
             <CardTitle className="line-clamp-1">{job.title}</CardTitle>
           </Link>
-          <Badge variant={statusVariant(job.status)}>
+          <Badge
+            variant={statusVariant(job.status)}
+            className={statusClassName(job.status)}
+          >
             {statusLabel(job.status)}
           </Badge>
         </div>
+        <p className="text-xs text-muted-foreground">Job ID: {job.shortId}</p>
         <CardDescription className="line-clamp-2 whitespace-pre-wrap">
           {job.description}
         </CardDescription>
@@ -218,14 +243,57 @@ const STATUS_FILTERS = [
 
 type StatusFilter = (typeof STATUS_FILTERS)[number]["value"];
 
-export default function JobsPage() {
-  const [filter, setFilter] = useState<StatusFilter>("all");
+type ApiError = {
+  error?: {
+    code?: string;
+    message?: string;
+  };
+};
 
-  const { data, isLoading } = useQuery({
+export default function JobsPage() {
+  const router = useRouter();
+  const [filter, setFilter] = useState<StatusFilter>("all");
+  const linkIconRef = useRef<LinkIconHandle>(null);
+
+  const { data: organizationProfile } = useQuery({
+    queryKey: ["organization-profile"],
+    queryFn: async () => {
+      const res = await apiClient.v1.organization.profile.$get();
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.data as { slug: string };
+    },
+  });
+
+  const handleCopyJobsPageLink = async () => {
+    if (!organizationProfile?.slug) {
+      toast.error("Organization slug not available");
+      return;
+    }
+
+    const link = `${config.app.url}/${organizationProfile.slug}/jobs`;
+
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Jobs page link copied");
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
+
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => {
       const res = await apiClient.v1.jobs.$get();
-      const json = await res.json();
+      const json = (await res.json()) as ApiError & { data?: Job[] };
+
+      if (!res.ok) {
+        const message = json.error?.message ?? "Failed to load jobs";
+        const err = new Error(message) as Error & { code?: string };
+        err.code = json.error?.code;
+        throw err;
+      }
+
       return (json.data ?? []) as Job[];
     },
   });
@@ -246,13 +314,25 @@ export default function JobsPage() {
             Manage your job postings.
           </p>
         </div>
-        <Button
-          className="cursor-pointer"
-          render={<Link href="/dashboard/jobs/new" />}
-        >
-          <RiAddLine />
-          Create Job
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={handleCopyJobsPageLink}
+            disabled={!organizationProfile?.slug}
+            onMouseEnter={() => linkIconRef.current?.startAnimation()}
+            onMouseLeave={() => linkIconRef.current?.stopAnimation()}
+          >
+            <LinkIcon ref={linkIconRef} size={16} />
+            Copy Jobs Page Link
+          </Button>
+          <Button
+            className="cursor-pointer"
+            render={<Link href="/dashboard/jobs/new" />}
+          >
+            <RiAddLine />
+            Create Job
+          </Button>
+        </div>
       </div>
 
       {!isLoading && allJobs.length > 0 && (
@@ -296,6 +376,44 @@ export default function JobsPage() {
             </Card>
           ))}
         </div>
+      ) : isError ? (
+        <Card className="flex-1">
+          <CardContent className="flex flex-1 items-center justify-center py-16">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <RiBriefcaseLine />
+                </EmptyMedia>
+                <EmptyTitle>Unable to load jobs</EmptyTitle>
+                <EmptyDescription>
+                  {((error as Error & { code?: string })?.code ===
+                  "NO_ACTIVE_ORGANIZATION"
+                    ? "Select or create an organization to view your job postings."
+                    : error?.message) ?? "Please try again."}
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                {(error as Error & { code?: string })?.code ===
+                "NO_ACTIVE_ORGANIZATION" ? (
+                  <Button
+                    className="cursor-pointer"
+                    onClick={() => router.push("/onboarding/organization")}
+                  >
+                    <RiAddLine />
+                    Set up organization
+                  </Button>
+                ) : (
+                  <Button
+                    className="cursor-pointer"
+                    onClick={() => window.location.reload()}
+                  >
+                    Retry
+                  </Button>
+                )}
+              </EmptyContent>
+            </Empty>
+          </CardContent>
+        </Card>
       ) : allJobs.length === 0 ? (
         <Card className="flex-1">
           <CardContent className="flex flex-1 items-center justify-center py-16">

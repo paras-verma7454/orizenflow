@@ -4,37 +4,50 @@ import { createCandidateEvaluationWorker } from "@packages/queue"
 import { evaluateCandidateJob } from "@/lib/evaluate-candidate"
 
 getSafeEnv(env, "@worker/bullmq")
+
+if (!env.REDIS_URL) {
+  console.error("[worker] REDIS_URL is not configured - worker cannot start")
+  process.exit(1)
+}
+
 const llmRateLimitPerMinute = Number(process.env.LLM_RATE_LIMIT_PER_MINUTE ?? "30")
 const llmMaxRetries = Number(process.env.LLM_MAX_RETRIES ?? "2")
 
-const worker = createCandidateEvaluationWorker(
-  env.REDIS_URL,
-  async (job) => {
-    console.info(
-      `[worker] evaluate candidate applicationId=${job.data.applicationId} jobId=${job.data.jobId} orgId=${job.data.organizationId}`,
-    )
-    await evaluateCandidateJob(
-      {
-        applicationId: job.data.applicationId,
-        organizationId: job.data.organizationId,
-        jobId: job.data.jobId,
-      },
-      {
-        sarvamApiKey: env.SARVAM_API_KEY,
-        githubToken: env.GITHUB_TOKEN,
-        enableEvidenceScraping: env.ENABLE_EVIDENCE_SCRAPING,
-        llmMaxRetries,
-      },
-    )
-  },
-  {
-    concurrency: env.WORKER_CONCURRENCY,
-    limiter: {
-      max: llmRateLimitPerMinute,
-      duration: 60_000,
+let worker: ReturnType<typeof createCandidateEvaluationWorker>
+
+try {
+  worker = createCandidateEvaluationWorker(
+    env.REDIS_URL,
+    async (job) => {
+      console.info(
+        `[worker] evaluate candidate applicationId=${job.data.applicationId} jobId=${job.data.jobId} orgId=${job.data.organizationId}`,
+      )
+      await evaluateCandidateJob(
+        {
+          applicationId: job.data.applicationId,
+          organizationId: job.data.organizationId,
+          jobId: job.data.jobId,
+        },
+        {
+          sarvamApiKey: env.SARVAM_API_KEY,
+          githubToken: env.GITHUB_TOKEN,
+          enableEvidenceScraping: env.ENABLE_EVIDENCE_SCRAPING,
+          llmMaxRetries,
+        },
+      )
     },
-  },
-)
+    {
+      concurrency: env.WORKER_CONCURRENCY,
+      limiter: {
+        max: llmRateLimitPerMinute,
+        duration: 60_000,
+      },
+    },
+  )
+} catch (error) {
+  console.error("[worker] Failed to create candidate evaluation worker:", error)
+  process.exit(1)
+}
 
 worker.on("ready", () => {
   console.info("[worker] candidate-evaluation worker ready")

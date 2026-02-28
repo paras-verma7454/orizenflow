@@ -42,6 +42,7 @@ const userUpdateSchema = z.object({
 
 const candidateSchema = z.object({
   id: z.string(),
+  shortId: z.string(),
   name: z.string(),
   email: z.string(),
   resumeUrl: z.string(),
@@ -58,6 +59,7 @@ const candidateSchema = z.object({
   createdAt: z.string().meta({ format: "date-time" }),
   job: z.object({
     id: z.string(),
+    shortId: z.string(),
     title: z.string(),
   }),
 })
@@ -74,6 +76,19 @@ const candidatesQuerySchema = z.object({
   dateTo: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+})
+
+const candidatesExportQuerySchema = z.object({
+  mode: z.enum(["current", "all", "job"]).default("current"),
+  jobId: z.string().optional(),
+  status: candidateStatusSchema.optional(),
+  q: z.string().trim().min(1).max(120).optional(),
+  skills: z.string().trim().min(1).max(200).optional(),
+  minScore: z.coerce.number().int().min(0).max(100).optional(),
+  maxScore: z.coerce.number().int().min(0).max(100).optional(),
+  source: z.enum(["github", "portfolio", "resume"]).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
 })
 
 const semanticSearchSchema = z.object({
@@ -127,8 +142,101 @@ const enqueueBulkReviewSchema = z.object({
   force: z.boolean().optional().default(false),
 })
 
-const candidateEvaluationQueue = createCandidateEvaluationQueue(process.env.REDIS_URL || "redis://localhost:6379")
+const candidateEvaluationQueue = (() => {
+  if (!env.REDIS_URL) {
+    console.warn("[v1] Redis not configured - candidate evaluation queue unavailable")
+    return null
+  }
+  try {
+    return createCandidateEvaluationQueue(env.REDIS_URL)
+  } catch (error) {
+    console.error("[v1] Failed to create candidate evaluation queue:", error)
+    return null
+  }
+})()
+
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
+
+const buildCandidateFilters = ({
+  orgId,
+  jobId,
+  status,
+  q,
+  skills,
+  minScore,
+  maxScore,
+  source,
+  dateFrom,
+  dateTo,
+}: {
+  orgId: string
+  jobId?: string
+  status?: (typeof CANDIDATE_STATUSES)[number]
+  q?: string
+  skills?: string
+  minScore?: number
+  maxScore?: number
+  source?: "github" | "portfolio" | "resume"
+  dateFrom?: string
+  dateTo?: string
+}) => {
+  const filters = [eq(jobApplications.organizationId, orgId)]
+
+  if (jobId) filters.push(eq(jobApplications.jobId, jobId))
+  if (status) filters.push(eq(jobApplications.status, status))
+  if (typeof minScore === "number") filters.push(gte(candidateEvaluations.score, minScore))
+  if (typeof maxScore === "number") filters.push(lte(candidateEvaluations.score, maxScore))
+  if (skills) {
+    const skillTokens = skills
+      .split(",")
+      .map((token) => token.trim())
+      .filter(Boolean)
+    if (skillTokens.length > 0) {
+      filters.push(or(...skillTokens.map((token) => ilike(candidateEvaluations.skillsJson, `%${token}%`)))!)
+    }
+  }
+  if (source === "github") {
+    filters.push(
+      or(
+        sql<boolean>`${jobApplications.githubUrl} is not null`,
+        ilike(candidateEvaluations.evidenceJson, "%\"github\":{%"),
+      )!,
+    )
+  }
+  if (source === "portfolio") {
+    filters.push(
+      or(
+        sql<boolean>`${jobApplications.portfolioUrl} is not null`,
+        ilike(candidateEvaluations.evidenceJson, "%\"portfolio\":{%"),
+      )!,
+    )
+  }
+  if (source === "resume") {
+    filters.push(sql<boolean>`${jobApplications.resumeUrl} is not null`)
+  }
+  if (dateFrom) filters.push(gte(jobApplications.createdAt, new Date(dateFrom)))
+  if (dateTo) filters.push(lte(jobApplications.createdAt, new Date(dateTo)))
+  if (q) {
+    filters.push(
+      or(
+        ilike(jobApplications.name, `%${q}%`),
+        ilike(jobApplications.email, `%${q}%`),
+        ilike(jobApplications.coverLetter, `%${q}%`),
+        ilike(candidateEvaluations.resumeTextExcerpt, `%${q}%`),
+        ilike(candidateEvaluations.summary, `%${q}%`),
+        ilike(candidateEvaluations.skillsJson, `%${q}%`),
+      )!,
+    )
+  }
+
+  return and(...filters)
+}
+
+const toCsvCell = (value: unknown) => {
+  if (value === null || value === undefined) return ""
+  const raw = typeof value === "string" ? value : String(value)
+  return `"${raw.replace(/"/g, '""')}"`
+}
 
 export const v1Router = new Hono<{
   Variables: Session
@@ -296,60 +404,23 @@ const { data } = await response.json()`,
       }
 
       const { jobId, status, q, skills, minScore, maxScore, source, dateFrom, dateTo, limit, offset } = c.req.valid("query")
-      const filters = [eq(jobApplications.organizationId, orgId)]
-
-      if (jobId) filters.push(eq(jobApplications.jobId, jobId))
-      if (status) filters.push(eq(jobApplications.status, status))
-      if (typeof minScore === "number") filters.push(gte(candidateEvaluations.score, minScore))
-      if (typeof maxScore === "number") filters.push(lte(candidateEvaluations.score, maxScore))
-      if (skills) {
-        const skillTokens = skills
-          .split(",")
-          .map((token) => token.trim())
-          .filter(Boolean)
-        if (skillTokens.length > 0) {
-          filters.push(or(...skillTokens.map((token) => ilike(candidateEvaluations.skillsJson, `%${token}%`)))!)
-        }
-      }
-      if (source === "github") {
-        filters.push(
-          or(
-            sql<boolean>`${jobApplications.githubUrl} is not null`,
-            ilike(candidateEvaluations.evidenceJson, "%\"github\":{%"),
-          )!,
-        )
-      }
-      if (source === "portfolio") {
-        filters.push(
-          or(
-            sql<boolean>`${jobApplications.portfolioUrl} is not null`,
-            ilike(candidateEvaluations.evidenceJson, "%\"portfolio\":{%"),
-          )!,
-        )
-      }
-      if (source === "resume") {
-        filters.push(sql<boolean>`${jobApplications.resumeUrl} is not null`)
-      }
-      if (dateFrom) filters.push(gte(jobApplications.createdAt, new Date(dateFrom)))
-      if (dateTo) filters.push(lte(jobApplications.createdAt, new Date(dateTo)))
-      if (q) {
-        filters.push(
-          or(
-            ilike(jobApplications.name, `%${q}%`),
-            ilike(jobApplications.email, `%${q}%`),
-            ilike(jobApplications.coverLetter, `%${q}%`),
-            ilike(candidateEvaluations.resumeTextExcerpt, `%${q}%`),
-            ilike(candidateEvaluations.summary, `%${q}%`),
-            ilike(candidateEvaluations.skillsJson, `%${q}%`),
-          )!,
-        )
-      }
-
-      const whereClause = and(...filters)
+      const whereClause = buildCandidateFilters({
+        orgId,
+        jobId,
+        status,
+        q,
+        skills,
+        minScore,
+        maxScore,
+        source,
+        dateFrom,
+        dateTo,
+      })
 
       const data = await db
         .select({
           id: jobApplications.id,
+          shortId: jobApplications.shortId,
           name: jobApplications.name,
           email: jobApplications.email,
           resumeUrl: jobApplications.resumeUrl,
@@ -366,6 +437,7 @@ const { data } = await response.json()`,
           createdAt: jobApplications.createdAt,
           job: {
             id: jobs.id,
+            shortId: jobs.shortId,
             title: jobs.title,
           },
         })
@@ -393,6 +465,137 @@ const { data } = await response.json()`,
           total,
           hasMore: offset + data.length < total,
         },
+      })
+    },
+  )
+  .get(
+    "/candidates/export",
+    validator("query", (value, c) => {
+      const parsed = candidatesExportQuerySchema.safeParse(value)
+      if (!parsed.success) {
+        return c.json(
+          { error: { code: "VALIDATION_ERROR", message: "Invalid query", issues: parsed.error.issues } },
+          400,
+        )
+      }
+      return parsed.data
+    }),
+    async (c) => {
+      const authSession = c.get("session")
+      const orgId = authSession.activeOrganizationId
+
+      if (!orgId) {
+        return c.text("", 200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="candidates.csv"',
+        })
+      }
+
+      const query = c.req.valid("query")
+      if (query.mode === "job" && !query.jobId) {
+        return c.json(
+          { error: { code: "VALIDATION_ERROR", message: "jobId is required for job export mode" } },
+          400,
+        )
+      }
+
+      const whereClause =
+        query.mode === "all"
+          ? buildCandidateFilters({ orgId, status: query.status })
+          : query.mode === "job"
+            ? buildCandidateFilters({ orgId, jobId: query.jobId, status: query.status })
+            : buildCandidateFilters({
+              orgId,
+              jobId: query.jobId,
+              status: query.status,
+              q: query.q,
+              skills: query.skills,
+              minScore: query.minScore,
+              maxScore: query.maxScore,
+              source: query.source,
+              dateFrom: query.dateFrom,
+              dateTo: query.dateTo,
+            })
+
+      const rows = await db
+        .select({
+          id: jobApplications.id,
+          shortId: jobApplications.shortId,
+          name: jobApplications.name,
+          email: jobApplications.email,
+          status: jobApplications.status,
+          createdAt: jobApplications.createdAt,
+          resumeUrl: jobApplications.resumeUrl,
+          linkedinUrl: jobApplications.linkedinUrl,
+          githubUrl: jobApplications.githubUrl,
+          portfolioUrl: jobApplications.portfolioUrl,
+          coverLetter: jobApplications.coverLetter,
+          questionAnswersJson: jobApplications.questionAnswersJson,
+          matchScore: candidateEvaluations.score,
+          skillsJson: candidateEvaluations.skillsJson,
+          evaluationSummary: candidateEvaluations.summary,
+          recommendation: candidateEvaluations.recommendation,
+          job: {
+            id: jobs.id,
+            shortId: jobs.shortId,
+            title: jobs.title,
+          },
+        })
+        .from(jobApplications)
+        .leftJoin(candidateEvaluations, eq(candidateEvaluations.applicationId, jobApplications.id))
+        .innerJoin(jobs, eq(jobApplications.jobId, jobs.id))
+        .where(whereClause)
+        .orderBy(desc(jobApplications.createdAt))
+
+      const headers = [
+        "Candidate ID",
+        "Name",
+        "Email",
+        "Status",
+        "Applied At",
+        "Job ID",
+        "Job Title",
+        "Match Score",
+        "Recommendation",
+        "Resume URL",
+        "LinkedIn URL",
+        "GitHub URL",
+        "Portfolio URL",
+        "Cover Letter",
+        "Skills",
+        "Evaluation Summary",
+        "Question Answers",
+      ]
+
+      const lines = [headers.map(toCsvCell).join(",")]
+      for (const row of rows) {
+        lines.push(
+          [
+            toCsvCell(row.shortId),
+            toCsvCell(row.name),
+            toCsvCell(row.email),
+            toCsvCell(row.status),
+            toCsvCell(row.createdAt.toISOString()),
+            toCsvCell(row.job.shortId),
+            toCsvCell(row.job.title),
+            toCsvCell(row.matchScore),
+            toCsvCell(row.recommendation),
+            toCsvCell(row.resumeUrl),
+            toCsvCell(row.linkedinUrl),
+            toCsvCell(row.githubUrl),
+            toCsvCell(row.portfolioUrl),
+            toCsvCell(row.coverLetter),
+            toCsvCell(row.skillsJson),
+            toCsvCell(row.evaluationSummary),
+            toCsvCell(row.questionAnswersJson),
+          ].join(","),
+        )
+      }
+
+      const csv = lines.join("\n")
+      return c.text(csv, 200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="candidates-${query.mode}.csv"`,
       })
     },
   )
@@ -544,6 +747,7 @@ const { data } = await response.json()`,
       const candidates = await db
         .select({
           id: jobApplications.id,
+          shortId: jobApplications.shortId,
           name: jobApplications.name,
           email: jobApplications.email,
           resumeUrl: jobApplications.resumeUrl,
@@ -560,6 +764,7 @@ const { data } = await response.json()`,
           createdAt: jobApplications.createdAt,
           job: {
             id: jobs.id,
+            shortId: jobs.shortId,
             title: jobs.title,
           },
         })
@@ -686,6 +891,19 @@ const { data } = await response.json()`,
         return c.json({ error: { code: "NOT_FOUND", message: "Candidate not found" } }, 404)
       }
 
+      if (!candidateEvaluationQueue) {
+        console.error("[queue] Review queue unavailable - Redis not configured")
+        return c.json(
+          {
+            error: {
+              code: "QUEUE_UNAVAILABLE",
+              message: "Review queue is unavailable. Redis is not configured.",
+            },
+          },
+          503,
+        )
+      }
+
       try {
         await candidateEvaluationQueue.add(
           "evaluate-candidate",
@@ -695,13 +913,13 @@ const { data } = await response.json()`,
             jobId: application.jobId,
             enqueuedAt: new Date().toISOString(),
           },
-        {
-          jobId: force ? `eval-${application.id}-${Date.now()}` : `eval-${application.id}`,
-        },
-      )
+          {
+            jobId: force ? `eval-${application.id}-${Date.now()}` : `eval-${application.id}`,
+          },
+        )
       } catch (error) {
         const reason = error instanceof Error ? error.message : "QUEUE_ERROR"
-        console.error("[queue] enqueue single review failed", { reason })
+        console.error("[queue] enqueue single review failed:", reason, error)
         return c.json(
           {
             error: {
@@ -805,11 +1023,24 @@ const { data } = await response.json()`,
       }))
 
       if (jobsToQueue.length > 0) {
+        if (!candidateEvaluationQueue) {
+          console.error("[queue] Bulk review queue unavailable - Redis not configured")
+          return c.json(
+            {
+              error: {
+                code: "QUEUE_UNAVAILABLE",
+                message: "Review queue is unavailable. Redis is not configured.",
+              },
+            },
+            503,
+          )
+        }
+
         try {
           await candidateEvaluationQueue.addBulk(jobsToQueue)
         } catch (error) {
           const reason = error instanceof Error ? error.message : "QUEUE_ERROR"
-          console.error("[queue] enqueue bulk review failed", { reason })
+          console.error("[queue] enqueue bulk review failed:", reason, error)
           return c.json(
             {
               error: {

@@ -2,6 +2,8 @@
 
 import {
   RiArrowRightLine,
+  RiDownloadLine,
+  RiFilter3Line,
   RiExternalLinkLine,
   RiFileTextLine,
   RiGithubLine,
@@ -17,6 +19,11 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Empty,
   EmptyDescription,
@@ -47,6 +54,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { apiClient } from "@/lib/api/client";
+import { shortId } from "@/lib/utils";
 
 type CandidateStatus =
   | "applied"
@@ -59,6 +67,7 @@ type CandidateSource = "all" | "github" | "portfolio" | "resume";
 
 type Candidate = {
   id: string;
+  shortId: string;
   name: string;
   email: string;
   resumeUrl: string;
@@ -74,12 +83,14 @@ type Candidate = {
   createdAt: string;
   job: {
     id: string;
+    shortId: string;
     title: string;
   };
 };
 
 type Job = {
   id: string;
+  shortId: string;
   title: string;
 };
 
@@ -130,6 +141,7 @@ export default function CandidatesPage() {
   const [semanticResults, setSemanticResults] = useState<Candidate[] | null>(
     null,
   );
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [offset, setOffset] = useState(0);
 
   const { data: jobs = [] } = useQuery({
@@ -234,6 +246,46 @@ export default function CandidatesPage() {
     },
   });
 
+  const exportCsvMutation = useMutation({
+    mutationFn: async () => {
+      const exportQuery = new URLSearchParams({ mode: "current" });
+
+      if (jobId !== "all") exportQuery.set("jobId", jobId);
+      if (status !== "all") exportQuery.set("status", status);
+      if (search.trim()) exportQuery.set("q", search.trim());
+      if (skills.trim()) exportQuery.set("skills", skills.trim());
+      if (source !== "all") exportQuery.set("source", source);
+      if (minScore.trim()) exportQuery.set("minScore", minScore.trim());
+      if (maxScore.trim()) exportQuery.set("maxScore", maxScore.trim());
+      if (dateFrom) exportQuery.set("dateFrom", dateFrom);
+      if (dateTo) exportQuery.set("dateTo", dateTo);
+
+      const res = await fetch(
+        `/api/v1/candidates/export?${exportQuery.toString()}`,
+      );
+      if (!res.ok) throw new Error("Failed to export candidates");
+
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "candidates-current-filter.csv";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    },
+    onMutate: () => {
+      toast("Exporting CSV with current filters applied");
+    },
+    onSuccess: () => {
+      toast.success("CSV exported with current filters");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const semanticMutation = useMutation({
     mutationFn: async () => {
       const res = await apiClient.v1.candidates["semantic-search"].$post({
@@ -269,11 +321,19 @@ export default function CandidatesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Candidates</h1>
           <p className="text-sm text-muted-foreground">
-            Search and filter by skills, score, source, application date, and
-            semantic intent.
+            Review pipeline progress and shortlist candidates faster.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            className="cursor-pointer"
+            onClick={() => exportCsvMutation.mutate()}
+            disabled={exportCsvMutation.isPending}
+          >
+            <RiDownloadLine className="size-4" />
+            {exportCsvMutation.isPending ? "Exporting..." : "Export CSV"}
+          </Button>
           <Button
             variant="outline"
             className="cursor-pointer"
@@ -287,7 +347,7 @@ export default function CandidatesPage() {
 
       <Card>
         <CardContent className="space-y-2.5 py-3 sm:space-y-3 sm:py-4">
-          <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-2.5 sm:gap-3 md:grid-cols-3 xl:grid-cols-4">
             <Input
               placeholder="Search name, email, resume text"
               value={search}
@@ -297,43 +357,6 @@ export default function CandidatesPage() {
                 setSemanticResults(null);
               }}
             />
-            <Input
-              placeholder="Skills (e.g. React, Node.js)"
-              value={skills}
-              onChange={(event) => {
-                setSkills(event.target.value);
-                setOffset(0);
-                setSemanticResults(null);
-              }}
-            />
-            <Input
-              placeholder="Semantic query"
-              value={semanticQuery}
-              onChange={(event) => setSemanticQuery(event.target.value)}
-            />
-            <div className="flex gap-2">
-              <Button
-                className="w-full cursor-pointer"
-                variant="default"
-                disabled={!semanticQuery.trim() || semanticMutation.isPending}
-                onClick={() => semanticMutation.mutate()}
-              >
-                <RiRobot2Line className="size-4" />
-                Semantic Search
-              </Button>
-              {semanticResults ? (
-                <Button
-                  className="cursor-pointer"
-                  variant="ghost"
-                  onClick={() => setSemanticResults(null)}
-                >
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Select
               value={jobId}
               onValueChange={(value) => {
@@ -346,15 +369,21 @@ export default function CandidatesPage() {
                 <span className="truncate text-sm">
                   {jobId === "all"
                     ? "All jobs"
-                    : (jobs.find((job) => job.id === jobId)?.title ??
-                      "All jobs")}
+                    : (() => {
+                        const selectedJob = jobs.find(
+                          (job) => job.id === jobId,
+                        );
+                        return selectedJob
+                          ? `${selectedJob.title} (${selectedJob.shortId})`
+                          : "All jobs";
+                      })()}
                 </span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All jobs</SelectItem>
                 {jobs.map((job) => (
                   <SelectItem key={job.id} value={job.id}>
-                    {job.title}
+                    {job.title} ({job.shortId})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -385,76 +414,6 @@ export default function CandidatesPage() {
                 ))}
               </SelectContent>
             </Select>
-
-            <Select
-              value={source}
-              onValueChange={(value) => {
-                setSource((value as CandidateSource | null) ?? "all");
-                setOffset(0);
-                setSemanticResults(null);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <span className="truncate text-sm">
-                  {sourceLabelMap[source]}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sources</SelectItem>
-                <SelectItem value="github">GitHub</SelectItem>
-                <SelectItem value="portfolio">Portfolio</SelectItem>
-                <SelectItem value="resume">Resume</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                placeholder="Min score"
-                type="number"
-                min={0}
-                max={100}
-                value={minScore}
-                onChange={(event) => {
-                  setMinScore(event.target.value);
-                  setOffset(0);
-                  setSemanticResults(null);
-                }}
-              />
-              <Input
-                placeholder="Max score"
-                type="number"
-                min={0}
-                max={100}
-                value={maxScore}
-                onChange={(event) => {
-                  setMaxScore(event.target.value);
-                  setOffset(0);
-                  setSemanticResults(null);
-                }}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(event) => {
-                  setDateFrom(event.target.value);
-                  setOffset(0);
-                  setSemanticResults(null);
-                }}
-              />
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(event) => {
-                  setDateTo(event.target.value);
-                  setOffset(0);
-                  setSemanticResults(null);
-                }}
-              />
-            </div>
-
             <div className="text-muted-foreground flex items-center text-xs sm:text-sm">
               {isLoading
                 ? "Loading candidates..."
@@ -463,6 +422,151 @@ export default function CandidatesPage() {
                   : `${total} total candidates`}
             </div>
           </div>
+
+          <Collapsible
+            open={showAdvancedFilters}
+            onOpenChange={setShowAdvancedFilters}
+          >
+            <div className="flex items-center justify-between">
+              <CollapsibleTrigger
+                render={
+                  <Button type="button" variant="ghost" className="px-0" />
+                }
+              >
+                <RiFilter3Line className="size-4" />
+                {showAdvancedFilters
+                  ? "Hide advanced filters"
+                  : "Show advanced filters"}
+              </CollapsibleTrigger>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setSearch("");
+                  setSkills("");
+                  setSource("all");
+                  setMinScore("");
+                  setMaxScore("");
+                  setDateFrom("");
+                  setDateTo("");
+                  setSemanticQuery("");
+                  setSemanticResults(null);
+                  setOffset(0);
+                }}
+              >
+                Clear advanced
+              </Button>
+            </div>
+
+            <CollapsibleContent className="pt-2">
+              <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <Input
+                  placeholder="Skills (e.g. React, Node.js)"
+                  value={skills}
+                  onChange={(event) => {
+                    setSkills(event.target.value);
+                    setOffset(0);
+                    setSemanticResults(null);
+                  }}
+                />
+
+                <Select
+                  value={source}
+                  onValueChange={(value) => {
+                    setSource((value as CandidateSource | null) ?? "all");
+                    setOffset(0);
+                    setSemanticResults(null);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <span className="truncate text-sm">
+                      {sourceLabelMap[source]}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All sources</SelectItem>
+                    <SelectItem value="github">GitHub</SelectItem>
+                    <SelectItem value="portfolio">Portfolio</SelectItem>
+                    <SelectItem value="resume">Resume</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    placeholder="Min score"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={minScore}
+                    onChange={(event) => {
+                      setMinScore(event.target.value);
+                      setOffset(0);
+                      setSemanticResults(null);
+                    }}
+                  />
+                  <Input
+                    placeholder="Max score"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={maxScore}
+                    onChange={(event) => {
+                      setMaxScore(event.target.value);
+                      setOffset(0);
+                      setSemanticResults(null);
+                    }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => {
+                      setDateFrom(event.target.value);
+                      setOffset(0);
+                      setSemanticResults(null);
+                    }}
+                  />
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => {
+                      setDateTo(event.target.value);
+                      setOffset(0);
+                      setSemanticResults(null);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-2.5 grid gap-2.5 sm:gap-3 md:grid-cols-[1fr_auto_auto]">
+                <Input
+                  placeholder="Semantic query"
+                  value={semanticQuery}
+                  onChange={(event) => setSemanticQuery(event.target.value)}
+                />
+                <Button
+                  className="cursor-pointer"
+                  variant="default"
+                  disabled={!semanticQuery.trim() || semanticMutation.isPending}
+                  onClick={() => semanticMutation.mutate()}
+                >
+                  <RiRobot2Line className="size-4" />
+                  Semantic Search
+                </Button>
+                {semanticResults ? (
+                  <Button
+                    className="cursor-pointer"
+                    variant="ghost"
+                    onClick={() => setSemanticResults(null)}
+                  >
+                    Clear Semantic
+                  </Button>
+                ) : null}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
       </Card>
 

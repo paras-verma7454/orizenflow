@@ -16,6 +16,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -59,9 +60,16 @@ interface Job {
   jobType: string;
   location: string | null;
   salaryRange: string | null;
+  questionsJson: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+type JobQuestion = {
+  id: string;
+  prompt: string;
+  required: boolean;
+};
 
 const JOB_TYPES = [
   { value: "remote", label: "Remote", icon: RiRemoteControlLine },
@@ -98,7 +106,50 @@ const formSchema = z.object({
   status: z.enum(["draft", "open", "closed", "filled"]),
   location: z.string(),
   salaryRange: z.string(),
+  questions: z.array(
+    z.object({
+      id: z.string().min(1),
+      prompt: z.string().trim().min(1, "Question cannot be empty").max(300),
+      required: z.boolean(),
+    }),
+  ),
 });
+
+const parseQuestions = (raw: string | null): JobQuestion[] => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is JobQuestion => {
+        if (!item || typeof item !== "object") return false;
+        const record = item as Record<string, unknown>;
+        return (
+          typeof record.id === "string" &&
+          typeof record.prompt === "string" &&
+          typeof record.required === "boolean"
+        );
+      })
+      .map((item) => ({
+        id: item.id,
+        prompt: item.prompt,
+        required: item.required,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+const normalizeQuestions = (
+  questions: z.infer<typeof formSchema>["questions"],
+) =>
+  questions
+    .map((question) => ({
+      id: question.id,
+      prompt: question.prompt.trim(),
+      required: question.required,
+    }))
+    .filter((question) => question.prompt.length > 0);
 
 function statusVariant(status: string) {
   switch (status) {
@@ -118,6 +169,8 @@ function statusVariant(status: string) {
 function EditJobForm({ job }: { job: Job }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [newQuestionPrompt, setNewQuestionPrompt] = useState("");
+  const initialQuestions = parseQuestions(job.questionsJson);
 
   const mutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
@@ -130,6 +183,7 @@ function EditJobForm({ job }: { job: Job }) {
           status: values.status,
           location: values.location?.trim() || undefined,
           salaryRange: values.salaryRange?.trim() || undefined,
+          questions: normalizeQuestions(values.questions),
         },
       });
       if (!res.ok) {
@@ -158,6 +212,7 @@ function EditJobForm({ job }: { job: Job }) {
       status: job.status as JobStatus,
       location: job.location ?? "",
       salaryRange: job.salaryRange ?? "",
+      questions: initialQuestions,
     },
     validators: {
       onSubmit: formSchema,
@@ -422,6 +477,106 @@ function EditJobForm({ job }: { job: Job }) {
                   )}
                 </form.Field>
               </FieldGroup>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary/10">
+                  <RiInformationLine className="size-4 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>Screening Questions</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <Separator />
+            <CardContent className="pt-4">
+              <form.Field name="questions" mode="array">
+                {(field) => (
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="edit-new-question-prompt">
+                        Add question
+                      </FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          id="edit-new-question-prompt"
+                          placeholder="e.g. What projects best represent your experience?"
+                          value={newQuestionPrompt}
+                          onChange={(event) =>
+                            setNewQuestionPrompt(event.target.value)
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            const prompt = newQuestionPrompt.trim();
+                            if (!prompt) return;
+                            field.pushValue({
+                              id: crypto.randomUUID(),
+                              prompt,
+                              required: false,
+                            });
+                            setNewQuestionPrompt("");
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </Field>
+
+                    {field.state.value.length > 0 ? (
+                      <div className="space-y-3">
+                        {field.state.value.map((question, index) => (
+                          <div
+                            key={question.id}
+                            className="space-y-2 rounded-lg border p-3"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={question.prompt}
+                                onChange={(event) =>
+                                  field.replaceValue(index, {
+                                    ...question,
+                                    prompt: event.target.value,
+                                  })
+                                }
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => field.removeValue(index)}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                checked={question.required}
+                                onChange={(event) =>
+                                  field.replaceValue(index, {
+                                    ...question,
+                                    required: event.target.checked,
+                                  })
+                                }
+                              />
+                              Required question
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        No custom questions yet.
+                      </p>
+                    )}
+                  </FieldGroup>
+                )}
+              </form.Field>
             </CardContent>
           </Card>
         </form>

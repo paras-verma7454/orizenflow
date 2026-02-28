@@ -5,6 +5,7 @@ export const jobs = pgTable(
   "jobs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    shortId: text("short_id").notNull().unique(),
     title: text("title").notNull(),
     slug: text("slug").notNull(),
     description: text("description").notNull(),
@@ -15,6 +16,7 @@ export const jobs = pgTable(
     jobType: text("job_type").notNull().default("on-site"), // remote, hybrid, on-site
     location: text("location"),
     salaryRange: text("salary_range"),
+    questionsJson: text("questions_json"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -25,6 +27,7 @@ export const jobApplications = pgTable(
   "job_applications",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    shortId: text("short_id").notNull().unique(),
     jobId: uuid("job_id")
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
@@ -38,6 +41,7 @@ export const jobApplications = pgTable(
     githubUrl: text("github_url"),
     portfolioUrl: text("portfolio_url"),
     coverLetter: text("cover_letter"),
+    questionAnswersJson: text("question_answers_json"),
     sourceUrl: text("source_url"),
     ip: text("ip"),
     userAgent: text("user_agent"),

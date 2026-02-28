@@ -21,8 +21,16 @@ import { config } from "@/lib/config";
 export function Navbar() {
   const pathname = usePathname();
   const { data: session } = authClient.useSession();
-  const isPublicApplyRoute = Boolean(
-    pathname && /^\/[^/]+\/job\/[^/]+$/.test(pathname),
+
+  // Check if we're on a public jobs page: /[orgSlug] or /[orgSlug]/[jobSlug]
+  const isPublicJobsRoute = Boolean(
+    pathname &&
+    !pathname.startsWith("/dashboard") &&
+    !pathname.startsWith("/api") &&
+    !pathname.startsWith("/onboarding") &&
+    !pathname.startsWith("/admin") &&
+    pathname !== "/" &&
+    /^\/[^/]+(\/[^/]+)?$/.test(pathname),
   );
 
   const [toDashboard, setToDashboard] = useState(false);
@@ -41,7 +49,7 @@ export function Navbar() {
         </Link>
         <div className="flex items-center gap-4">
           {/* Desktop Navigation */}
-          {!isPublicApplyRoute ? (
+          {!isPublicJobsRoute ? (
             <nav className="hidden items-center gap-8 lg:flex">
               <Button
                 variant="ghost"
@@ -59,7 +67,7 @@ export function Navbar() {
           ) : null}
 
           <div className="flex items-center gap-2">
-            {!isPublicApplyRoute ? (
+            {!isPublicJobsRoute ? (
               session?.user ? (
                 <Button
                   className="w-24 font-semibold"
@@ -78,12 +86,12 @@ export function Navbar() {
               )
             ) : null}
 
-            <div className="hidden sm:block">
+            <div className={isPublicJobsRoute ? "block" : "hidden sm:block"}>
               <ModeToggle />
             </div>
 
             {/* Mobile Navigation Toggle */}
-            {!isPublicApplyRoute ? (
+            {!isPublicJobsRoute ? (
               <Sheet open={isOpen} onOpenChange={setIsOpen}>
                 <SheetTrigger
                   render={

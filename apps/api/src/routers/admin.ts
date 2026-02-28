@@ -27,7 +27,18 @@ const appIdParamSchema = z.object({
   id: z.string().min(1),
 })
 
-const queue = env.REDIS_URL ? createCandidateEvaluationQueue(env.REDIS_URL) : null
+const queue = (() => {
+  if (!env.REDIS_URL) {
+    console.warn("[admin] Redis not configured - candidate evaluation queue unavailable")
+    return null
+  }
+  try {
+    return createCandidateEvaluationQueue(env.REDIS_URL)
+  } catch (error) {
+    console.error("[admin] Failed to create candidate evaluation queue:", error)
+    return null
+  }
+})()
 
 const getQueueSnapshot = async () => {
   if (!queue) {
@@ -556,6 +567,7 @@ export const adminRouter = new Hono<{ Variables: Session }>()
                   data: z.object({
                     application: z.object({
                       id: z.string(),
+                      shortId: z.string(),
                       name: z.string(),
                       email: z.string(),
                       status: z.string(),
@@ -563,6 +575,7 @@ export const adminRouter = new Hono<{ Variables: Session }>()
                       resumeUrl: z.string(),
                       job: z.object({
                         id: z.string(),
+                        shortId: z.string(),
                         title: z.string(),
                       }),
                       organization: z.object({
@@ -609,12 +622,14 @@ export const adminRouter = new Hono<{ Variables: Session }>()
       const [application] = await db
         .select({
           id: jobApplications.id,
+          shortId: jobApplications.shortId,
           name: jobApplications.name,
           email: jobApplications.email,
           status: jobApplications.status,
           createdAt: jobApplications.createdAt,
           resumeUrl: jobApplications.resumeUrl,
           jobId: jobs.id,
+          jobShortId: jobs.shortId,
           jobTitle: jobs.title,
           organizationId: organization.id,
           organizationName: organization.name,
@@ -651,6 +666,7 @@ export const adminRouter = new Hono<{ Variables: Session }>()
         data: {
           application: {
             id: application.id,
+            shortId: application.shortId,
             name: application.name,
             email: application.email,
             status: application.status,
@@ -658,6 +674,7 @@ export const adminRouter = new Hono<{ Variables: Session }>()
             resumeUrl: application.resumeUrl,
             job: {
               id: application.jobId,
+              shortId: application.jobShortId,
               title: application.jobTitle,
             },
             organization: {

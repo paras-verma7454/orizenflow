@@ -1,16 +1,40 @@
 "use client";
 
-import { RiBriefcaseLine, RiGroupLine, RiTimeLine } from "@remixicon/react";
+import {
+  RiArrowRightUpLine,
+  RiBriefcaseLine,
+  RiGroupLine,
+  RiLineChartLine,
+  RiTimeLine,
+} from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useMemo } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+} from "recharts";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import {
   Empty,
   EmptyContent,
@@ -21,6 +45,14 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
+
+type CandidateStatus =
+  | "applied"
+  | "screening"
+  | "interview"
+  | "offer"
+  | "hired"
+  | "rejected";
 
 type Job = {
   id: string;
@@ -33,13 +65,60 @@ type Candidate = {
   name: string;
   email: string;
   resumeUrl: string;
-  status: string;
+  status: CandidateStatus;
   createdAt: string;
   job: {
     id: string;
     title: string;
   };
 };
+
+const statusOptions = [
+  { value: "applied", label: "Applied" },
+  { value: "screening", label: "Screening" },
+  { value: "interview", label: "Interview" },
+  { value: "offer", label: "Offer" },
+  { value: "hired", label: "Hired" },
+  { value: "rejected", label: "Rejected" },
+] as const;
+
+const statusLabelMap = Object.fromEntries(
+  statusOptions.map((item) => [item.value, item.label]),
+) as Record<CandidateStatus, string>;
+
+const statusChartConfig = {
+  total: {
+    label: "Candidates",
+    color: "var(--chart-2)",
+  },
+} satisfies ChartConfig;
+
+const trendChartConfig = {
+  applications: {
+    label: "Applications",
+    color: "var(--chart-1)",
+  },
+} satisfies ChartConfig;
+
+const statusBadgeVariantMap = {
+  applied: "outline",
+  screening: "secondary",
+  interview: "secondary",
+  offer: "default",
+  hired: "default",
+  rejected: "destructive",
+} as const;
+
+const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+const longDateFormatter = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -71,45 +150,129 @@ export default function DashboardPage() {
 
   const jobs = data?.jobs ?? [];
   const candidates = data?.candidates ?? [];
+
   const openJobsCount = jobs.filter((job) => job.status === "open").length;
   const pendingReviewCount = candidates.filter(
     (candidate) => candidate.status === "applied",
   ).length;
-  const recentCandidates = [...candidates].slice(0, 5);
+  const hiredCount = candidates.filter(
+    (candidate) => candidate.status === "hired",
+  ).length;
+  const conversionRate =
+    candidates.length > 0
+      ? Math.round((hiredCount / candidates.length) * 100)
+      : 0;
+
+  const recentCandidates = useMemo(
+    () =>
+      [...candidates]
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() -
+            new Date(left.createdAt).getTime(),
+        )
+        .slice(0, 6),
+    [candidates],
+  );
+
+  const statusChartData = useMemo(
+    () =>
+      statusOptions.map((statusOption) => ({
+        status: statusOption.label,
+        total: candidates.filter(
+          (candidate) => candidate.status === statusOption.value,
+        ).length,
+      })),
+    [candidates],
+  );
+
+  const trendChartData = useMemo(() => {
+    const totalDays = 14;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const buckets = new Map<string, number>();
+    for (let index = totalDays - 1; index >= 0; index -= 1) {
+      const day = new Date(today);
+      day.setDate(today.getDate() - index);
+      const key = day.toISOString().slice(0, 10);
+      buckets.set(key, 0);
+    }
+
+    candidates.forEach((candidate) => {
+      const created = new Date(candidate.createdAt);
+      created.setHours(0, 0, 0, 0);
+      const key = created.toISOString().slice(0, 10);
+      if (buckets.has(key)) {
+        buckets.set(key, (buckets.get(key) ?? 0) + 1);
+      }
+    });
+
+    return Array.from(buckets.entries()).map(([date, applications]) => ({
+      date,
+      label: shortDateFormatter.format(new Date(`${date}T00:00:00`)),
+      applications,
+    }));
+  }, [candidates]);
+
+  const activePipelineCount = candidates.filter(
+    (candidate) =>
+      candidate.status !== "hired" && candidate.status !== "rejected",
+  ).length;
 
   const stats = [
     {
       title: "Open Jobs",
       value: String(openJobsCount),
-      description: "Active job postings",
+      description: `${jobs.length} total jobs`,
       icon: <RiBriefcaseLine className="size-4 text-muted-foreground" />,
     },
     {
-      title: "Candidates",
+      title: "Total Candidates",
       value: String(candidates.length),
-      description: "Total applications",
+      description: "Total applications received",
       icon: <RiGroupLine className="size-4 text-muted-foreground" />,
     },
     {
-      title: "Pending Review",
+      title: "Applied (Not Reviewed)",
       value: String(pendingReviewCount),
-      description: "Awaiting evaluation",
+      description: "Candidates in applied stage",
       icon: <RiTimeLine className="size-4 text-muted-foreground" />,
+    },
+    {
+      title: "Conversion Rate",
+      value: `${conversionRate}%`,
+      description: `${hiredCount} hired candidates`,
+      icon: <RiLineChartLine className="size-4 text-muted-foreground" />,
     },
   ];
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6 pt-14">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Overview of your hiring pipeline.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Real-time hiring pipeline snapshot and team activity.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            render={<Link href="/dashboard/candidates" />}
+          >
+            View Candidates
+          </Button>
+          <Button render={<Link href="/dashboard/jobs/new" />}>
+            Create Job
+            <RiArrowRightUpLine className="size-4" />
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {isLoading
-          ? Array.from({ length: 3 }).map((_, index) => (
+          ? Array.from({ length: 4 }).map((_, index) => (
               <Card key={index}>
                 <CardHeader>
                   <Skeleton className="h-4 w-24" />
@@ -138,11 +301,100 @@ export default function DashboardPage() {
             ))}
       </div>
 
-      <Card className="flex-1">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle>Applications Trend</CardTitle>
+            <CardDescription>
+              New applications from the last 14 days
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : (
+              <ChartContainer className="h-64 w-full" config={trendChartConfig}>
+                <AreaChart
+                  data={trendChartData}
+                  margin={{ left: 12, right: 12 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={18}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent indicator="line" />}
+                  />
+                  <Area
+                    dataKey="applications"
+                    type="monotone"
+                    fill="var(--color-applications)"
+                    fillOpacity={0.2}
+                    stroke="var(--color-applications)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Pipeline Breakdown</CardTitle>
+            <CardDescription>
+              {activePipelineCount} active in pipeline
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : (
+              <ChartContainer
+                className="h-64 w-full"
+                config={statusChartConfig}
+              >
+                <BarChart
+                  data={statusChartData}
+                  layout="vertical"
+                  margin={{ left: 12, right: 8 }}
+                >
+                  <CartesianGrid horizontal={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="status"
+                    axisLine={false}
+                    tickLine={false}
+                    width={76}
+                  />
+                  <XAxis type="number" hide />
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent hideLabel />}
+                  />
+                  <Bar dataKey="total" fill="var(--color-total)" radius={6} />
+                </BarChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Applications</CardTitle>
+          <CardDescription>
+            Latest candidates entering your pipeline
+          </CardDescription>
+        </CardHeader>
         {isLoading ? (
-          <CardContent className="space-y-4 py-6">
-            <Skeleton className="h-5 w-40" />
-            {Array.from({ length: 4 }).map((_, index) => (
+          <CardContent className="space-y-3 pb-6">
+            {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={index} className="h-12 w-full" />
             ))}
           </CardContent>
@@ -167,37 +419,40 @@ export default function DashboardPage() {
             </Empty>
           </CardContent>
         ) : (
-          <CardContent className="space-y-4 py-6">
-            <h2 className="text-sm font-medium">Recent applications</h2>
+          <CardContent className="space-y-2 pb-6">
             {recentCandidates.map((candidate) => (
               <div
                 key={candidate.id}
-                className="flex items-center justify-between rounded-lg border px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">
                     {candidate.name}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {candidate.job.title}
+                    {candidate.job.title} • {candidate.email}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(candidate.createdAt).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </span>
-                  <a
-                    href={candidate.resumeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-accent hover:underline"
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={
+                      statusBadgeVariantMap[candidate.status] ?? "outline"
+                    }
                   >
-                    Resume
-                  </a>
+                    {statusLabelMap[candidate.status]}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {longDateFormatter.format(new Date(candidate.createdAt))}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    render={
+                      <Link href={`/dashboard/candidates/${candidate.id}`} />
+                    }
+                  >
+                    Open
+                  </Button>
                 </div>
               </div>
             ))}

@@ -18,8 +18,10 @@
     "@packages/db": "workspace:*",
     "@packages/env": "workspace:*",
     "@packages/queue": "workspace:*",
+    "cheerio": "catalog:",
     "drizzle-orm": "catalog:",
-    "sarvamai": "catalog:"
+    "sarvamai": "catalog:",
+    "turndown": "catalog:"
   },
   "devDependencies": {
     "@packages/tsconfig": "workspace:*",

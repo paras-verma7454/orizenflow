@@ -154,6 +154,42 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  :where(
+    a[href],
+    button,
+    [role="button"],
+    summary,
+    label[for],
+    input[type="button"],
+    input[type="submit"],
+    input[type="reset"],
+    input[type="checkbox"],
+    input[type="radio"],
+    select,
+    [data-slot="button"],
+    [data-slot="checkbox"],
+    [data-slot="radio-group-item"],
+    [data-slot="switch"],
+    [data-slot="tabs-trigger"],
+    [data-slot="dropdown-menu-trigger"],
+    [data-slot="navigation-menu-trigger"],
+    [data-slot="toggle"],
+    [data-slot="toggle-group-item"]
+  ):not(:disabled):not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  :where(
+    button,
+    input,
+    select,
+    textarea,
+    [role="button"],
+    [data-slot]
+  ):is(:disabled, [aria-disabled="true"]) {
+    cursor: not-allowed;
+  }
 }
 
 /* fumadocs */
