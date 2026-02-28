@@ -795,16 +795,27 @@ export const adminRouter = new Hono<{ Variables: Session }>()
         return c.json({ success: true, count: 0, message: "No pending users to notify" })
       }
 
-      // Send emails in parallel (or we could use a queue for better reliability)
-      // For now, doing it simple.
-      const results = await Promise.allSettled(
-        pendingUsers.map(async (u) => {
-          await emailService.sendLiveNowEmail(u.email)
-          await db.update(waitlist).set({ status: "invited" }).where(eq(waitlist.id, u.id))
-        }),
-      )
+      const dailyLimit = 100
+      const delayMs = 400
+      const usersToNotify = pendingUsers.slice(0, dailyLimit)
+      let successCount = 0
 
-      const successCount = results.filter((r) => r.status === "fulfilled").length
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+      for (let i = 0; i < usersToNotify.length; i += 1) {
+        const u = usersToNotify[i]
+        const result = await emailService.sendLiveNowEmail(u.email)
+        if ((result as { error?: unknown })?.error) {
+          continue
+        }
+
+        await db.update(waitlist).set({ status: "invited" }).where(eq(waitlist.id, u.id))
+        successCount += 1
+
+        if (i < usersToNotify.length - 1) {
+          await sleep(delayMs)
+        }
+      }
 
       return c.json({ success: true, count: successCount })
     },
