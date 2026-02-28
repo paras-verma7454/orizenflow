@@ -11,7 +11,7 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 export BUILDKIT_PROGRESS=plain
 
 BUILD_FLAGS=""
-if [ "${CLEAN_BUILD}" = "1" ]; then
+if [ "${CLEAN_BUILD:-0}" = "1" ]; then
 	BUILD_FLAGS="--no-cache"
 	echo "Clean build enabled (CLEAN_BUILD=1)"
 fi
