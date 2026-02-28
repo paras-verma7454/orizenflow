@@ -11,4 +11,5 @@ COPY maintenance.html /usr/share/nginx/html/maintenance.html
 
 EXPOSE 80 443
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
