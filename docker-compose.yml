@@ -52,6 +52,8 @@ services:
   proxy:
     image: nginx:alpine
     restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c "mkdir -p /run/nginx && nginx -g 'daemon off;'"
     ports:
       - "80:80"
       - "443:443"
