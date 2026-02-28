@@ -10,7 +10,7 @@ import { Highlight } from "@/components/ui/hero-highlight";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/lib/config";
 
-import { ApplyForm } from "./apply-form";
+import { ApplyForm } from "./components/ApplyForm";
 
 type PublicJobResponse = {
   data: {

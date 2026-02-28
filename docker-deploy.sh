@@ -32,6 +32,8 @@ docker compose logs --tail=50
 
 echo ""
 echo "=== Access your services ==="
+echo "Public site (via proxy): http://localhost"
+echo "Maintenance fallback page is served automatically if web/api is unavailable"
 echo "API: http://localhost:4000"
 echo "Web: http://localhost:3000"
 echo "Redis: localhost:6379"
