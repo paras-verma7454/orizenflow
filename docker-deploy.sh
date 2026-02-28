@@ -8,7 +8,7 @@ echo "=== Deploying with Docker Compose ==="
 
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
-export BUILDKIT_PROGRESS=plain
+export BUILDKIT_PROGRESS=auto
 
 BUILD_FLAGS=""
 if [ "${CLEAN_BUILD:-0}" = "1" ]; then
@@ -22,10 +22,10 @@ docker compose down
 
 # 2. Build images one by one
 echo "Building API image..."
-docker compose --progress=plain build ${BUILD_FLAGS} api
+docker compose build ${BUILD_FLAGS} api
 
 echo "Building Web image..."
-docker compose --progress=plain build ${BUILD_FLAGS} web
+docker compose build ${BUILD_FLAGS} web
 
 # 3. Start services
 echo "Starting services..."
