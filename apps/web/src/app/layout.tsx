@@ -8,44 +8,48 @@ import { Navbar } from "@/components/navbar/home";
 import { config } from "@/lib/config";
 import "@/app/globals.css";
 
-function getOgImageUrl(): string {
+function getOgImagePath(): string {
   const staticOgPath = join(process.cwd(), "public", "og", "home.png");
   if (existsSync(staticOgPath)) {
-    return `${config.app.url}/og/home.png?t=${Date.now()}`;
+    return "/og/home.png";
   }
-  return `${config.app.url}/api/og/home?t=${Date.now()}`;
+  return "/api/og/home";
 }
 
-const ogImageUrl = getOgImageUrl();
+const ogImagePath = getOgImagePath();
 
-export const metadata: Metadata = {
-  title: {
-    default: "Orizen Flow - Evidence-based hiring CRM",
-    template: "%s | Orizen Flow",
-  },
-  description:
-    "Automatically analyze resumes, portfolios, and GitHub to identify the strongest candidates with technical precision.",
-  openGraph: {
-    type: "website",
-    siteName: "Orizen Flow",
-    url: config.app.url,
-    images: [
-      {
-        url: ogImageUrl,
-        width: 1200,
-        height: 630,
-        alt: "Orizen Flow - Evidence-based hiring CRM",
-      },
-    ],
-  },
-  other: {
-    "og:logo": `${config.app.url}/favicon.ico`,
-  },
-  twitter: {
-    card: "summary_large_image",
-    images: [ogImageUrl],
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const ogImageUrl = `${config.app.url}${ogImagePath}`;
+
+  return {
+    title: {
+      default: "Orizen Flow - Evidence-based hiring CRM",
+      template: "%s | Orizen Flow",
+    },
+    description:
+      "Automatically analyze resumes, portfolios, and GitHub to identify the strongest candidates with technical precision.",
+    openGraph: {
+      type: "website",
+      siteName: "Orizen Flow",
+      url: config.app.url,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: "Orizen Flow - Evidence-based hiring CRM",
+        },
+      ],
+    },
+    other: {
+      "og:logo": `${config.app.url}/favicon.ico`,
+    },
+    twitter: {
+      card: "summary_large_image",
+      images: [ogImageUrl],
+    },
+  };
+}
 
 export default function RootLayout({
   children,
