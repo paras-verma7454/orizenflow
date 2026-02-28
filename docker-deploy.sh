@@ -22,10 +22,10 @@ docker compose down
 
 # 2. Build images one by one
 echo "Building API image..."
-docker compose build ${BUILD_FLAGS} --progress=plain api
+docker compose --progress=plain build ${BUILD_FLAGS} api
 
 echo "Building Web image..."
-docker compose build ${BUILD_FLAGS} --progress=plain web
+docker compose --progress=plain build ${BUILD_FLAGS} web
 
 # 3. Start services
 echo "Starting services..."
