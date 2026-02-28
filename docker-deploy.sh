@@ -1,8 +1,20 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Simple Docker Compose deployment without k3s
 
 echo "=== Deploying with Docker Compose ==="
+
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
+export BUILDKIT_PROGRESS=plain
+
+BUILD_FLAGS=""
+if [ "${CLEAN_BUILD}" = "1" ]; then
+	BUILD_FLAGS="--no-cache"
+	echo "Clean build enabled (CLEAN_BUILD=1)"
+fi
 
 # 1. Stop existing containers
 echo "Stopping existing containers..."
@@ -10,10 +22,10 @@ docker compose down
 
 # 2. Build images one by one
 echo "Building API image..."
-docker compose build --no-cache api
+docker compose build ${BUILD_FLAGS} --progress=plain api
 
 echo "Building Web image..."
-docker compose build --no-cache web
+docker compose build ${BUILD_FLAGS} --progress=plain web
 
 # 3. Start services
 echo "Starting services..."
@@ -45,3 +57,6 @@ echo "  docker compose logs -f worker"
 echo ""
 echo "Rebuild without downtime:"
 echo "  docker compose build --no-cache && docker compose up -d --force-recreate"
+echo ""
+echo "Force clean deploy build:"
+echo "  CLEAN_BUILD=1 bash docker-deploy.sh"
