@@ -50,11 +50,9 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
 import { config } from "@/lib/config";
-import { shortId } from "@/lib/utils";
 
 interface Job {
   id: string;
-  shortId: string;
   title: string;
   slug: string;
   description: string;
@@ -270,7 +268,7 @@ export default function JobDetailPage() {
               })}
             </p>
             <p className="text-xs text-muted-foreground font-mono">
-              Job ID: {job.shortId}
+              Job ID: {job.id.replace(/-/g, "").slice(-6).toUpperCase()}
             </p>
           </div>
         </div>

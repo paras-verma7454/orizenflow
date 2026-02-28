@@ -12,10 +12,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-
-import { LinkIcon, type LinkIconHandle } from "@/components/ui/link";
 
 import {
   AlertDialog,
@@ -49,12 +47,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiClient } from "@/lib/api/client";
-import { config } from "@/lib/config";
-import { shortId } from "@/lib/utils";
 
 interface Job {
   id: string;
-  shortId: string;
   title: string;
   description: string;
   organizationId: string;
@@ -104,6 +99,8 @@ function statusClassName(status: string) {
       return "";
   }
 }
+
+const shortJobId = (value: string) => value.slice(0, 8).toUpperCase();
 
 function statusLabel(status: string) {
   switch (status) {
@@ -156,7 +153,9 @@ function JobCard({ job }: { job: Job }) {
             {statusLabel(job.status)}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground">Job ID: {job.shortId}</p>
+        <p className="text-xs text-muted-foreground">
+          Job ID: {shortJobId(job.id)}
+        </p>
         <CardDescription className="line-clamp-2 whitespace-pre-wrap">
           {job.description}
         </CardDescription>
@@ -253,33 +252,6 @@ type ApiError = {
 export default function JobsPage() {
   const router = useRouter();
   const [filter, setFilter] = useState<StatusFilter>("all");
-  const linkIconRef = useRef<LinkIconHandle>(null);
-
-  const { data: organizationProfile } = useQuery({
-    queryKey: ["organization-profile"],
-    queryFn: async () => {
-      const res = await apiClient.v1.organization.profile.$get();
-      if (!res.ok) return null;
-      const json = await res.json();
-      return json.data as { slug: string };
-    },
-  });
-
-  const handleCopyJobsPageLink = async () => {
-    if (!organizationProfile?.slug) {
-      toast.error("Organization slug not available");
-      return;
-    }
-
-    const link = `${config.app.url}/${organizationProfile.slug}/jobs`;
-
-    try {
-      await navigator.clipboard.writeText(link);
-      toast.success("Jobs page link copied");
-    } catch {
-      toast.error("Failed to copy link");
-    }
-  };
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["jobs"],
@@ -314,25 +286,13 @@ export default function JobsPage() {
             Manage your job postings.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={handleCopyJobsPageLink}
-            disabled={!organizationProfile?.slug}
-            onMouseEnter={() => linkIconRef.current?.startAnimation()}
-            onMouseLeave={() => linkIconRef.current?.stopAnimation()}
-          >
-            <LinkIcon ref={linkIconRef} size={16} />
-            Copy Jobs Page Link
-          </Button>
-          <Button
-            className="cursor-pointer"
-            render={<Link href="/dashboard/jobs/new" />}
-          >
-            <RiAddLine />
-            Create Job
-          </Button>
-        </div>
+        <Button
+          className="cursor-pointer"
+          render={<Link href="/dashboard/jobs/new" />}
+        >
+          <RiAddLine />
+          Create Job
+        </Button>
       </div>
 
       {!isLoading && allJobs.length > 0 && (

@@ -8,6 +8,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    image: orizen-flow-api:latest
     env_file:
       - .env
     environment:
@@ -22,6 +23,7 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    image: orizen-flow-web:latest
     env_file:
       - .env
     environment:

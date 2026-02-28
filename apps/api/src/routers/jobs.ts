@@ -8,7 +8,6 @@ import { describeRoute, resolver } from "hono-openapi"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
 
-import { generateShortId } from "@/lib/utils"
 import { authMiddleware } from "@/middlewares"
 
 const jobQuestionSchema = z.object({
@@ -149,7 +148,6 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
         .insert(jobs)
         .values({
           ...jobData,
-          shortId: generateShortId(),
           questionsJson: JSON.stringify(questions),
           slug: createJobSlug(data.title),
           organizationId: orgId,
