@@ -50,10 +50,10 @@ services:
       - redis
 
   proxy:
-    image: nginx:alpine
+    build:
+      context: ./infra/nginx
+      dockerfile: Dockerfile
     restart: unless-stopped
-    entrypoint: /bin/sh
-    command: -c "mkdir -p /run/nginx && nginx -g 'daemon off;'"
     ports:
       - "80:80"
       - "443:443"
@@ -61,8 +61,5 @@ services:
       - web
       - api
     volumes:
-      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./infra/nginx/ssl-params.conf:/etc/nginx/ssl-params.conf:ro
-      - ./infra/nginx/maintenance.html:/usr/share/nginx/html/maintenance.html:ro
       # SSL certificates (production only - mount from Let's Encrypt on host)
       - /etc/letsencrypt:/etc/letsencrypt:ro
