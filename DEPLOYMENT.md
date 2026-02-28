@@ -154,6 +154,66 @@ INTERNAL_API_URL=http://api:4000
 - Web: `3000`
 - API: `4000`
 - Redis: `6379`
+- Nginx Proxy: `80` (HTTP), `443` (HTTPS)
+
+## SSL Certificate Setup (Production)
+
+The nginx proxy is configured to use Let's Encrypt certificates. Before deploying:
+
+### 1. Install Certbot
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install certbot
+
+# Stop nginx if running to free up ports 80/443
+sudo systemctl stop nginx
+```
+
+### 2. Obtain SSL Certificates
+
+```bash
+# For frontend domain
+sudo certbot certonly --standalone -d orizenflow.luffytaro.me
+
+# For API domain
+sudo certbot certonly --standalone -d api.orizenflow.luffytaro.me
+```
+
+### 3. Update nginx config if needed
+
+The default nginx config expects certificates at:
+
+- Frontend: `/etc/letsencrypt/live/orizenflow.luffytaro.me-0001/`
+- API: `/etc/letsencrypt/live/api.orizenflow.luffytaro.me/`
+
+If your certificate paths differ (no `-0001` suffix), update [infra/nginx/default.conf](infra/nginx/default.conf):
+
+```nginx
+ssl_certificate /etc/letsencrypt/live/orizenflow.luffytaro.me/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/orizenflow.luffytaro.me/privkey.pem;
+```
+
+### 4. Deploy with Docker Compose
+
+The certificates are automatically mounted from `/etc/letsencrypt` (read-only):
+
+```bash
+./docker-deploy.sh
+```
+
+### 5. Auto-renewal
+
+Set up automatic certificate renewal:
+
+```bash
+# Add cron job
+sudo crontab -e
+
+# Add this line (checks daily at 2am)
+0 2 * * * certbot renew --quiet && docker compose restart proxy
+```
 
 ## Troubleshooting
 
