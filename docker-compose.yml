@@ -49,17 +49,13 @@ services:
     depends_on:
       - redis
 
-  proxy:
-    build:
-      context: ./infra/nginx
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - web
-      - api
-    volumes:
-      # SSL certificates (production only - mount from Let's Encrypt on host)
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+proxy:
+  build:
+    context: ./infra/nginx
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  ports:
+    - "80:80"
+  depends_on:
+    - web
+    - api
