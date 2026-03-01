@@ -49,13 +49,13 @@ services:
     depends_on:
       - redis
 
-proxy:
-  build:
-    context: ./infra/nginx
-    dockerfile: Dockerfile
-  restart: unless-stopped
-  ports:
-    - "80:80"
-  depends_on:
-    - web
-    - api
+  proxy:
+    build:
+      context: ./infra/nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+      - api
