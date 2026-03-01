@@ -48,14 +48,3 @@ services:
       - WORKER_CONCURRENCY=2
     depends_on:
       - redis
-
-  proxy:
-    build:
-      context: ./infra/nginx
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    depends_on:
-      - web
-      - api
