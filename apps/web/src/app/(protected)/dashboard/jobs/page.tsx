@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  RiAddLine,
   RiBriefcaseLine,
   RiBuildingLine,
   RiDeleteBinLine,

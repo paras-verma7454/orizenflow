@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { existsSync } from "fs";
 import { join } from "path";
@@ -68,7 +69,9 @@ export default function RootLayout({
         </head>
         <body className="min-h-dvh antialiased">
           <InnerProvider>
-            <Navbar />
+            <Suspense fallback={null}>
+              <Navbar />
+            </Suspense>
             {children}
           </InnerProvider>
         </body>
