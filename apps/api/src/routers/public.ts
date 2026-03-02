@@ -1,5 +1,6 @@
 import { findIp } from "@arcjet/ip"
 import { db, jobApplications, jobs, organization } from "@packages/db"
+import { env } from "@packages/env/api-hono"
 import { createCandidateEvaluationQueue } from "@packages/queue"
 import { and, desc, eq, ne } from "drizzle-orm"
 import { Hono } from "hono"
@@ -92,8 +93,94 @@ const applySchema = z.object({
             }),
         )
         .optional(),
+    source: z.enum(["public_link", "embedded_iframe"]).optional(),
+    captchaToken: z.string().min(1),
     honeypot: z.string().optional(),
 })
+
+const resolveApplicationSource = (
+    source: "public_link" | "embedded_iframe" | undefined,
+    referer: string | null,
+) => {
+    const sourceLabel = source === "embedded_iframe" ? "embedded_iframe" : "public_link"
+    if (referer) return `${sourceLabel}:${referer}`
+    return sourceLabel
+}
+
+const extractHostname = (rawUrl: string | null) => {
+    if (!rawUrl) return null
+    try {
+        return new URL(rawUrl).hostname
+    } catch {
+        return null
+    }
+}
+
+const turnstileActionForSource = (source: "public_link" | "embedded_iframe" | undefined) => {
+    return source === "embedded_iframe" ? "embedded_apply" : "public_apply"
+}
+
+const verifyTurnstileToken = async (
+    captchaToken: string,
+    ip: string | null,
+    expectedAction: string,
+    expectedHostname: string | null,
+) => {
+    if (!captchaToken || captchaToken.length > 2048) {
+        return { ok: false as const, errorCodes: ["invalid-input-response"] }
+    }
+
+    if (!env.TURNSTILE_SECRET_KEY) {
+        console.error("[public] TURNSTILE_SECRET_KEY is not configured")
+        return { ok: false as const, errorCodes: ["missing-input-secret"] }
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10_000)
+
+    try {
+        const body = new URLSearchParams()
+        body.set("secret", env.TURNSTILE_SECRET_KEY)
+        body.set("response", captchaToken)
+        if (ip) body.set("remoteip", ip)
+        body.set("idempotency_key", crypto.randomUUID())
+
+        const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+            method: "POST",
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: body.toString(),
+            signal: controller.signal,
+        })
+        if (!res.ok) return { ok: false as const, errorCodes: ["bad-request"] }
+
+        const json = (await res.json().catch(() => null)) as
+            | {
+                success?: boolean
+                action?: string
+                hostname?: string
+                "error-codes"?: string[]
+            }
+            | null
+
+        if (!json?.success) {
+            return { ok: false as const, errorCodes: json?.["error-codes"] ?? ["invalid-input-response"] }
+        }
+
+        if (json.action !== expectedAction) {
+            return { ok: false as const, errorCodes: ["action-mismatch"] }
+        }
+
+        if (expectedHostname && json.hostname !== expectedHostname) {
+            return { ok: false as const, errorCodes: ["hostname-mismatch"] }
+        }
+
+        return { ok: true as const }
+    } catch {
+        return { ok: false as const, errorCodes: ["internal-error"] }
+    } finally {
+        clearTimeout(timeoutId)
+    }
+}
 
 const extractDriveFileId = (rawUrl: string) => {
     try {
@@ -221,6 +308,113 @@ export const publicRouter = new Hono()
         const orgSlug = c.req.param("orgSlug")
         const slug = c.req.param("slug")
 
+        // Look up by slug for backward compatibility
+        const [data] = await db
+            .select({
+                id: jobs.id,
+                shortId: jobs.shortId,
+                title: jobs.title,
+                slug: jobs.slug,
+                description: jobs.description,
+                status: jobs.status,
+                jobType: jobs.jobType,
+                location: jobs.location,
+                salaryRange: jobs.salaryRange,
+                questionsJson: jobs.questionsJson,
+                createdAt: jobs.createdAt,
+                organization: {
+                    id: organization.id,
+                    name: organization.name,
+                    slug: organization.slug,
+                    logo: organization.logo,
+                    metadata: organization.metadata,
+                },
+            })
+            .from(jobs)
+            .innerJoin(organization, eq(jobs.organizationId, organization.id))
+            .where(and(eq(jobs.slug, slug), eq(organization.slug, orgSlug), ne(jobs.status, "draft")))
+
+        if (!data) {
+            return c.json({ error: { code: "NOT_FOUND", message: "Job not found" } }, 404)
+        }
+
+        const metadata = parseMetadata(data.organization.metadata)
+
+        return c.json({
+            data: {
+                ...data,
+                questions: parseJobQuestions(data.questionsJson),
+                organization: {
+                    id: data.organization.id,
+                    name: data.organization.name,
+                    slug: data.organization.slug,
+                    logo: data.organization.logo,
+                    tagline: typeof metadata.tagline === "string" ? metadata.tagline : null,
+                    about: typeof metadata.about === "string" ? metadata.about : null,
+                    websiteUrl: typeof metadata.websiteUrl === "string" ? metadata.websiteUrl : null,
+                    linkedinUrl: typeof metadata.linkedinUrl === "string" ? metadata.linkedinUrl : null,
+                },
+            },
+        })
+    })
+    .get("/:orgSlug/job/:shortId", async (c) => {
+        const orgSlug = c.req.param("orgSlug")
+        const shortId = c.req.param("shortId")
+
+        // Look up by shortId (the unique identifier)
+        const [data] = await db
+            .select({
+                id: jobs.id,
+                shortId: jobs.shortId,
+                title: jobs.title,
+                slug: jobs.slug,
+                description: jobs.description,
+                status: jobs.status,
+                jobType: jobs.jobType,
+                location: jobs.location,
+                salaryRange: jobs.salaryRange,
+                questionsJson: jobs.questionsJson,
+                createdAt: jobs.createdAt,
+                organization: {
+                    id: organization.id,
+                    name: organization.name,
+                    slug: organization.slug,
+                    logo: organization.logo,
+                    metadata: organization.metadata,
+                },
+            })
+            .from(jobs)
+            .innerJoin(organization, eq(jobs.organizationId, organization.id))
+            .where(and(eq(jobs.shortId, shortId), eq(organization.slug, orgSlug), ne(jobs.status, "draft")))
+
+        if (!data) {
+            return c.json({ error: { code: "NOT_FOUND", message: "Job not found" } }, 404)
+        }
+
+        const metadata = parseMetadata(data.organization.metadata)
+
+        return c.json({
+            data: {
+                ...data,
+                questions: parseJobQuestions(data.questionsJson),
+                organization: {
+                    id: data.organization.id,
+                    name: data.organization.name,
+                    slug: data.organization.slug,
+                    logo: data.organization.logo,
+                    tagline: typeof metadata.tagline === "string" ? metadata.tagline : null,
+                    about: typeof metadata.about === "string" ? metadata.about : null,
+                    websiteUrl: typeof metadata.websiteUrl === "string" ? metadata.websiteUrl : null,
+                    linkedinUrl: typeof metadata.linkedinUrl === "string" ? metadata.linkedinUrl : null,
+                },
+            },
+        })
+    })
+    .get("/:orgSlug/job/by-slug/:slug", async (c) => {
+        const orgSlug = c.req.param("orgSlug")
+        const slug = c.req.param("slug")
+
+        // Look up by slug for backward compatibility
         const [data] = await db
             .select({
                 id: jobs.id,
@@ -270,7 +464,7 @@ export const publicRouter = new Hono()
         })
     })
     .post(
-        "/:orgSlug/job/by-slug/:slug/apply",
+        "/:orgSlug/job/:shortId/apply",
         validator("json", (value, c) => {
             const parsed = applySchema.safeParse(value)
             if (!parsed.success) {
@@ -283,11 +477,33 @@ export const publicRouter = new Hono()
         }),
         async (c) => {
             const orgSlug = c.req.param("orgSlug")
-            const slug = c.req.param("slug")
+            const shortId = c.req.param("shortId")
             const payload = c.req.valid("json")
+            const ip = findIp(c.req.raw) || null
+            const referer = c.req.header("referer") || null
+            const expectedHostname = extractHostname(referer)
+            const expectedAction = turnstileActionForSource(payload.source)
 
             if (payload.honeypot && payload.honeypot.trim().length > 0) {
                 return c.json({ success: true, message: "Application submitted" })
+            }
+
+            const captchaResult = await verifyTurnstileToken(payload.captchaToken, ip, expectedAction, expectedHostname)
+            if (!captchaResult.ok) {
+                console.warn("[public] Turnstile verification failed:", captchaResult.errorCodes)
+                const isExpired = captchaResult.errorCodes.includes("timeout-or-duplicate")
+                return c.json(
+                    {
+                        error: {
+                            code: "CAPTCHA_VERIFICATION_FAILED",
+                            message: isExpired
+                                ? "Captcha expired or was already used. Please complete it again."
+                                : "Captcha verification failed. Please try again.",
+                            errors: captchaResult.errorCodes,
+                        },
+                    },
+                    400,
+                )
             }
 
             if (!isValidResumeLink(payload.resumeUrl)) {
@@ -315,32 +531,32 @@ export const publicRouter = new Hono()
                 )
             }
 
-            const [job] = await db
+            const [jobData] = await db
                 .select({ id: jobs.id, organizationId: jobs.organizationId, questionsJson: jobs.questionsJson })
                 .from(jobs)
                 .innerJoin(organization, eq(jobs.organizationId, organization.id))
-                .where(and(eq(jobs.slug, slug), eq(organization.slug, orgSlug), ne(jobs.status, "draft")))
+                .where(and(eq(jobs.shortId, shortId), eq(organization.slug, orgSlug), ne(jobs.status, "draft")))
 
-            if (!job) {
+            if (!jobData) {
                 return c.json({ error: { code: "NOT_FOUND", message: "Job not found" } }, 404)
             }
 
-            const jobQuestions = parseJobQuestions(job.questionsJson)
+            const jobQuestions = parseJobQuestions(jobData.questionsJson)
             const questionAnswers = normalizeQuestionAnswers(payload.questionAnswers)
             const questionAnswerError = validateRequiredQuestionAnswers(jobQuestions, questionAnswers)
             if (questionAnswerError) {
                 return c.json({ error: { code: "VALIDATION_ERROR", message: questionAnswerError } }, 400)
             }
 
-            const ip = findIp(c.req.raw) || null
             const userAgent = c.req.header("user-agent") || null
+            const sourceUrl = resolveApplicationSource(payload.source, referer)
 
             const [inserted] = await db
                 .insert(jobApplications)
                 .values({
                     shortId: generateShortId(),
-                    jobId: job.id,
-                    organizationId: job.organizationId,
+                    jobId: jobData.id,
+                    organizationId: jobData.organizationId,
                     name: payload.name,
                     email: payload.email,
                     resumeUrl: payload.resumeUrl,
@@ -349,7 +565,7 @@ export const publicRouter = new Hono()
                     portfolioUrl: payload.portfolioUrl || null,
                     coverLetter: payload.coverLetter || null,
                     questionAnswersJson: questionAnswers.length > 0 ? JSON.stringify(questionAnswers) : null,
-                    sourceUrl: c.req.url,
+                    sourceUrl,
                     ip,
                     userAgent,
                 })
@@ -364,8 +580,8 @@ export const publicRouter = new Hono()
                 try {
                     await candidateEvaluationQueue.add("evaluate-candidate", {
                         applicationId: inserted.id,
-                        organizationId: job.organizationId,
-                        jobId: job.id,
+                        organizationId: jobData.organizationId,
+                        jobId: jobData.id,
                         enqueuedAt: new Date().toISOString(),
                     })
                 } catch (error) {
@@ -447,9 +663,31 @@ export const publicRouter = new Hono()
             const orgSlug = c.req.param("orgSlug")
             const id = c.req.param("id")
             const payload = c.req.valid("json")
+            const ip = findIp(c.req.raw) || null
+            const referer = c.req.header("referer") || null
+            const expectedHostname = extractHostname(referer)
+            const expectedAction = turnstileActionForSource(payload.source)
 
             if (payload.honeypot && payload.honeypot.trim().length > 0) {
                 return c.json({ success: true, message: "Application submitted" })
+            }
+
+            const captchaResult = await verifyTurnstileToken(payload.captchaToken, ip, expectedAction, expectedHostname)
+            if (!captchaResult.ok) {
+                console.warn("[public] Turnstile verification failed (by-id):", captchaResult.errorCodes)
+                const isExpired = captchaResult.errorCodes.includes("timeout-or-duplicate")
+                return c.json(
+                    {
+                        error: {
+                            code: "CAPTCHA_VERIFICATION_FAILED",
+                            message: isExpired
+                                ? "Captcha expired or was already used. Please complete it again."
+                                : "Captcha verification failed. Please try again.",
+                            errors: captchaResult.errorCodes,
+                        },
+                    },
+                    400,
+                )
             }
 
             if (!isValidResumeLink(payload.resumeUrl)) {
@@ -494,8 +732,8 @@ export const publicRouter = new Hono()
                 return c.json({ error: { code: "VALIDATION_ERROR", message: questionAnswerError } }, 400)
             }
 
-            const ip = findIp(c.req.raw) || null
             const userAgent = c.req.header("user-agent") || null
+            const sourceUrl = resolveApplicationSource(payload.source, referer)
 
             const [inserted] = await db
                 .insert(jobApplications)
@@ -511,7 +749,7 @@ export const publicRouter = new Hono()
                     portfolioUrl: payload.portfolioUrl || null,
                     coverLetter: payload.coverLetter || null,
                     questionAnswersJson: questionAnswers.length > 0 ? JSON.stringify(questionAnswers) : null,
-                    sourceUrl: c.req.url,
+                    sourceUrl,
                     ip,
                     userAgent,
                 })

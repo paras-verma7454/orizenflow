@@ -26,6 +26,10 @@ export const config = {
     internalUrl: getInternalApiUrl(),
   },
 
+  captcha: {
+    turnstileSiteKey: env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+  },
+
   // Social links
   social: {
     github: "https://github.com/paras-verma7454/orizenflow",

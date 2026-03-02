@@ -6,9 +6,7 @@ import {
   RiFilter3Line,
   RiExternalLinkLine,
   RiFileTextLine,
-  RiGithubLine,
   RiGroupLine,
-  RiLinkedinBoxLine,
   RiLoader4Line,
   RiRobot2Line,
 } from "@remixicon/react";
@@ -53,6 +51,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AnimatedGithub } from "@/components/icons/animated-github";
+import { AnimatedLinkedin } from "@/components/icons/animated-linkedin";
 import { apiClient } from "@/lib/api/client";
 import { shortId } from "@/lib/utils";
 
@@ -104,6 +104,21 @@ const statusOptions: Array<{ value: CandidateStatus; label: string }> = [
   { value: "hired", label: "Hired" },
   { value: "rejected", label: "Rejected" },
 ];
+
+const statusSelectClassMap: Record<CandidateStatus, string> = {
+  applied:
+    "border-sky-300/70 bg-sky-500/15 text-sky-800 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-200",
+  screening:
+    "border-indigo-300/70 bg-indigo-500/15 text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-400/15 dark:text-indigo-200",
+  interview:
+    "border-violet-300/70 bg-violet-500/15 text-violet-800 dark:border-violet-400/40 dark:bg-violet-400/15 dark:text-violet-200",
+  offer:
+    "border-amber-300/70 bg-amber-500/15 text-amber-800 dark:border-amber-400/40 dark:bg-amber-400/15 dark:text-amber-200",
+  hired:
+    "border-emerald-300/70 bg-emerald-500/15 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200",
+  rejected:
+    "border-rose-300/70 bg-rose-500/15 text-rose-800 dark:border-rose-400/40 dark:bg-rose-400/15 dark:text-rose-200",
+};
 
 const parseSkills = (raw: string | null) => {
   if (!raw) return [] as string[];
@@ -224,28 +239,6 @@ export default function CandidatesPage() {
     },
   });
 
-  const bulkReviewMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.v1.candidates["review-bulk"].$post({
-        json: {
-          ...(jobId !== "all" ? { jobId } : {}),
-          ...(status !== "all" ? { status } : {}),
-          limit: 100,
-          offset: 0,
-          force: false,
-        },
-      });
-      if (!res.ok) throw new Error("Failed to queue bulk review");
-      return res.json();
-    },
-    onSuccess: (result) => {
-      toast.success(`Queued ${result.data.queued} candidates for review`);
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
-
   const exportCsvMutation = useMutation({
     mutationFn: async () => {
       const exportQuery = new URLSearchParams({ mode: "current" });
@@ -333,14 +326,6 @@ export default function CandidatesPage() {
           >
             <RiDownloadLine className="size-4" />
             {exportCsvMutation.isPending ? "Exporting..." : "Export CSV"}
-          </Button>
-          <Button
-            variant="outline"
-            className="cursor-pointer"
-            onClick={() => bulkReviewMutation.mutate()}
-            disabled={bulkReviewMutation.isPending}
-          >
-            {bulkReviewMutation.isPending ? "Queueing..." : "Bulk Review"}
           </Button>
         </div>
       </div>
@@ -633,7 +618,9 @@ export default function CandidatesPage() {
                           })
                         }
                       >
-                        <SelectTrigger className="w-36">
+                        <SelectTrigger
+                          className={`w-36 font-medium ${statusSelectClassMap[candidate.status]}`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -676,7 +663,10 @@ export default function CandidatesPage() {
                                   />
                                 }
                               >
-                                <RiLinkedinBoxLine className="size-4" />
+                                <AnimatedLinkedin
+                                  className="size-4"
+                                  size={16}
+                                />
                               </TooltipTrigger>
                               <TooltipContent>LinkedIn</TooltipContent>
                             </Tooltip>
@@ -693,7 +683,7 @@ export default function CandidatesPage() {
                                   />
                                 }
                               >
-                                <RiGithubLine className="size-4" />
+                                <AnimatedGithub className="size-4" size={16} />
                               </TooltipTrigger>
                               <TooltipContent>GitHub</TooltipContent>
                             </Tooltip>

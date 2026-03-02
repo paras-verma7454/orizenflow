@@ -19,6 +19,7 @@ export const env = createEnv({
     RESEND_API_KEY: z.string().optional(),
     RESEND_FROM_EMAIL: z.string().default("Orizen Flow <onboarding@resend.dev>"),
     REDIS_URL: z.url().optional(),
+    TURNSTILE_SECRET_KEY: z.string().optional(),
     ADMIN_EMAILS: z.string().default(""),
   },
   runtimeEnv: {
@@ -32,6 +33,7 @@ export const env = createEnv({
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
     REDIS_URL: process.env.REDIS_URL,
+    TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY,
     ADMIN_EMAILS: process.env.ADMIN_EMAILS,
   },
   emptyStringAsUndefined: true,

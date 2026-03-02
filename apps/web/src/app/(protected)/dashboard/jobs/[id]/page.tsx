@@ -15,7 +15,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
+import { RiLoaderLine } from "@remixicon/react";
 
 import {
   AlertDialog,
@@ -40,6 +42,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -53,6 +63,7 @@ import { config } from "@/lib/config";
 
 interface Job {
   id: string;
+  shortId: string;
   title: string;
   slug: string;
   description: string;
@@ -120,6 +131,9 @@ export default function JobDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [isEmbedDialogOpen, setIsEmbedDialogOpen] = useState(false);
+  const [showEmbedPreview, setShowEmbedPreview] = useState(false);
+  const [isIframeLoading, setIsIframeLoading] = useState(false);
 
   const { data: job, isLoading } = useQuery({
     queryKey: ["jobs", params.id],
@@ -149,13 +163,30 @@ export default function JobDetailPage() {
       return;
     }
 
-    const link = `${config.app.url}/${organizationProfile.slug}/${job.slug}`;
+    const link = `${config.app.url}/${organizationProfile.slug}/${job.slug}/${job.shortId}`;
 
     try {
       await navigator.clipboard.writeText(link);
       toast.success("Public link copied");
     } catch {
       toast.error("Failed to copy link");
+    }
+  };
+
+  const handleCopyEmbedCode = async () => {
+    if (!organizationProfile?.slug || !job?.id) {
+      toast.error("Embed code is not available yet");
+      return;
+    }
+
+    const embedUrl = `${config.app.url}/${organizationProfile.slug}/${job.slug}/${job.shortId}?embed=1`;
+    const snippet = `<iframe src="${embedUrl}" title="Apply for ${job.title}" width="100%" height="980" frameborder="0" loading="lazy"></iframe>`;
+
+    try {
+      await navigator.clipboard.writeText(snippet);
+      toast.success("Embed code copied");
+    } catch {
+      toast.error("Failed to copy embed code");
     }
   };
 
@@ -225,6 +256,13 @@ export default function JobDetailPage() {
   }
 
   const jobType = JOB_TYPES[job.jobType];
+  const jobShortId = job.id.replace(/-/g, "").slice(-6).toUpperCase();
+  const embedUrl = organizationProfile?.slug
+    ? `${config.app.url}/${organizationProfile.slug}/${job.slug}/${job.shortId}?embed=1`
+    : "";
+  const embedSnippet = organizationProfile?.slug
+    ? `<iframe src="${embedUrl}" title="Apply for ${job.title}" width="100%" height="980" frameborder="0" loading="lazy"></iframe>`
+    : "";
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6 pt-14">
@@ -281,6 +319,107 @@ export default function JobDetailPage() {
             <RiFileCopyLine />
             Copy Public Link
           </Button>
+          <Dialog
+            open={isEmbedDialogOpen}
+            onOpenChange={(open) => {
+              setIsEmbedDialogOpen(open);
+              if (!open) {
+                setShowEmbedPreview(false);
+                setIsIframeLoading(false);
+              }
+            }}
+          >
+            <DialogTrigger
+              render={<Button variant="outline" className="cursor-pointer" />}
+            >
+              <RiFileCopyLine />
+              Embed Code
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Embed Apply Form</DialogTitle>
+                <DialogDescription>
+                  Preview the application form and copy the iframe snippet for
+                  your careers page.
+                </DialogDescription>
+              </DialogHeader>
+
+              {organizationProfile?.slug ? (
+                <div className="grid gap-4 md:grid-cols-2 md:items-start">
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium">Form Preview</h3>
+
+                    <div className="rounded-md border bg-muted/20 p-2">
+                      {showEmbedPreview ? (
+                        <div className="relative">
+                          {isIframeLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center rounded-md border bg-background/90 backdrop-blur-sm z-10">
+                              <div className="flex flex-col items-center gap-2">
+                                <RiLoaderLine className="h-8 w-8 animate-spin text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">
+                                  Loading preview...
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          <div className="overflow-hidden rounded-md border bg-background">
+                            <iframe
+                              src={embedUrl}
+                              title={`Apply for ${job.title}`}
+                              className="h-96 w-full"
+                              loading="lazy"
+                              onLoad={() => setIsIframeLoading(false)}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex h-96 items-center justify-center rounded-md border bg-background/80">
+                          <div className="space-y-2 px-4 text-center">
+                            <p className="text-sm text-muted-foreground">
+                              Preview loads on demand for faster dialog opening.
+                            </p>
+                            <Button
+                              variant="outline"
+                              className="cursor-pointer"
+                              onClick={() => {
+                                setShowEmbedPreview(true);
+                                setIsIframeLoading(true);
+                              }}
+                            >
+                              Load Preview
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-medium">Code Snippet</h3>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer"
+                        onClick={handleCopyEmbedCode}
+                      >
+                        <RiFileCopyLine />
+                        Copy Code
+                      </Button>
+                    </div>
+                    <pre className="max-h-96 overflow-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
+                      <code>{embedSnippet}</code>
+                    </pre>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Embed code is unavailable until your organization slug is
+                  configured.
+                </p>
+              )}
+            </DialogContent>
+          </Dialog>
           <Button
             variant="outline"
             className="cursor-pointer"

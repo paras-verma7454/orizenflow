@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  RiAddLine,
   RiBriefcaseLine,
   RiBuildingLine,
   RiDeleteBinLine,
@@ -12,7 +11,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -47,9 +46,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiClient } from "@/lib/api/client";
+import {
+  AnimatedPlus,
+  type PlusIconHandle,
+} from "@/components/icons/animated-plus";
 
 interface Job {
   id: string;
+  shortId: string;
   title: string;
   description: string;
   organizationId: string;
@@ -252,6 +256,8 @@ type ApiError = {
 export default function JobsPage() {
   const router = useRouter();
   const [filter, setFilter] = useState<StatusFilter>("all");
+  const createJobRef = useRef<PlusIconHandle>(null);
+  const setUpOrgRef = useRef<PlusIconHandle>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["jobs"],
@@ -289,8 +295,10 @@ export default function JobsPage() {
         <Button
           className="cursor-pointer"
           render={<Link href="/dashboard/jobs/new" />}
+          onMouseEnter={() => createJobRef.current?.startAnimation()}
+          onMouseLeave={() => createJobRef.current?.stopAnimation()}
         >
-          <RiAddLine />
+          <AnimatedPlus ref={createJobRef} className="size-4" />
           Create Job
         </Button>
       </div>
@@ -358,8 +366,10 @@ export default function JobsPage() {
                   <Button
                     className="cursor-pointer"
                     onClick={() => router.push("/onboarding/organization")}
+                    onMouseEnter={() => setUpOrgRef.current?.startAnimation()}
+                    onMouseLeave={() => setUpOrgRef.current?.stopAnimation()}
                   >
-                    <RiAddLine />
+                    <AnimatedPlus ref={setUpOrgRef} className="size-4" />
                     Set up organization
                   </Button>
                 ) : (

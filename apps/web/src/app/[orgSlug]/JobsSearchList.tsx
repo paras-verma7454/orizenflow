@@ -19,7 +19,7 @@ const jobTypeLabelMap: Record<string, string> = {
 
 interface Job {
   id: string;
-  shortId?: string; // Optional based on previous context, but safer to assume it might be missing
+  shortId: string;
   title: string;
   slug: string;
   jobType: string;
@@ -89,7 +89,7 @@ export function JobsSearchList({ jobs, orgSlug }: JobsSearchListProps) {
             return (
               <Link
                 key={job.id}
-                href={`/${orgSlug}/${job.slug}`}
+                href={`/${orgSlug}/${job.slug}/${job.shortId}`}
                 className="group block rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition-all duration-200 hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-stone-950/40 dark:hover:border-slate-700"
               >
                 <div className="space-y-4">

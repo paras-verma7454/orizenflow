@@ -1,15 +1,9 @@
 "use client";
 
-import {
-  RiArrowRightUpLine,
-  RiBriefcaseLine,
-  RiGroupLine,
-  RiLineChartLine,
-  RiTimeLine,
-} from "@remixicon/react";
+import { ArrowUpRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   Area,
   AreaChart,
@@ -45,6 +39,23 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiClient } from "@/lib/api/client";
+import { useTimezone } from "@/hooks/use-timezone";
+import {
+  AnimatedBriefcase,
+  type AnimatedBriefcaseHandle,
+} from "@/components/icons/animated-briefcase";
+import {
+  AnimatedUsersCandidates,
+  type AnimatedUsersCandidatesHandle,
+} from "@/components/icons/animated-users-candidates";
+import {
+  AnimatedClock,
+  type AnimatedClockHandle,
+} from "@/components/icons/animated-clock";
+import {
+  AnimatedLineChart,
+  type AnimatedLineChartHandle,
+} from "@/components/icons/animated-line-chart";
 
 type CandidateStatus =
   | "applied"
@@ -121,6 +132,12 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export default function DashboardPage() {
+  const { timezone } = useTimezone();
+  const briefcaseRef = useRef<AnimatedBriefcaseHandle>(null);
+  const usersRef = useRef<AnimatedUsersCandidatesHandle>(null);
+  const clockRef = useRef<AnimatedClockHandle>(null);
+  const chartRef = useRef<AnimatedLineChartHandle>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-overview"],
     queryFn: async () => {
@@ -191,18 +208,28 @@ export default function DashboardPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Helper to get timezone-aware date string (YYYY-MM-DD)
+    const getLocalDateKey = (date: Date, tz: string) => {
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      return formatter.format(date);
+    };
+
     const buckets = new Map<string, number>();
-    for (let index = totalDays - 1; index >= 0; index -= 1) {
+    for (let index = 0; index < totalDays; index += 1) {
       const day = new Date(today);
-      day.setDate(today.getDate() - index);
-      const key = day.toISOString().slice(0, 10);
+      day.setDate(today.getDate() - (totalDays - 1 - index));
+      const key = getLocalDateKey(day, timezone || "UTC");
       buckets.set(key, 0);
     }
 
     candidates.forEach((candidate) => {
       const created = new Date(candidate.createdAt);
-      created.setHours(0, 0, 0, 0);
-      const key = created.toISOString().slice(0, 10);
+      const key = getLocalDateKey(created, timezone || "UTC");
       if (buckets.has(key)) {
         buckets.set(key, (buckets.get(key) ?? 0) + 1);
       }
@@ -213,7 +240,7 @@ export default function DashboardPage() {
       label: shortDateFormatter.format(new Date(`${date}T00:00:00`)),
       applications,
     }));
-  }, [candidates]);
+  }, [candidates, timezone]);
 
   const activePipelineCount = candidates.filter(
     (candidate) =>
@@ -225,25 +252,49 @@ export default function DashboardPage() {
       title: "Open Jobs",
       value: String(openJobsCount),
       description: `${jobs.length} total jobs`,
-      icon: <RiBriefcaseLine className="size-4 text-muted-foreground" />,
+      iconRef: briefcaseRef,
+      icon: (
+        <AnimatedBriefcase
+          ref={briefcaseRef}
+          className="size-4 text-muted-foreground"
+        />
+      ),
     },
     {
       title: "Total Candidates",
       value: String(candidates.length),
       description: "Total applications received",
-      icon: <RiGroupLine className="size-4 text-muted-foreground" />,
+      iconRef: usersRef,
+      icon: (
+        <AnimatedUsersCandidates
+          ref={usersRef}
+          className="size-4 text-muted-foreground"
+        />
+      ),
     },
     {
       title: "Applied (Not Reviewed)",
       value: String(pendingReviewCount),
       description: "Candidates in applied stage",
-      icon: <RiTimeLine className="size-4 text-muted-foreground" />,
+      iconRef: clockRef,
+      icon: (
+        <AnimatedClock
+          ref={clockRef}
+          className="size-4 text-muted-foreground"
+        />
+      ),
     },
     {
       title: "Conversion Rate",
       value: `${conversionRate}%`,
       description: `${hiredCount} hired candidates`,
-      icon: <RiLineChartLine className="size-4 text-muted-foreground" />,
+      iconRef: chartRef,
+      icon: (
+        <AnimatedLineChart
+          ref={chartRef}
+          className="size-4 text-muted-foreground"
+        />
+      ),
     },
   ];
 
@@ -265,7 +316,7 @@ export default function DashboardPage() {
           </Button>
           <Button render={<Link href="/dashboard/jobs/new" />}>
             Create Job
-            <RiArrowRightUpLine className="size-4" />
+            <ArrowUpRight className="size-4" />
           </Button>
         </div>
       </div>
@@ -284,7 +335,11 @@ export default function DashboardPage() {
               </Card>
             ))
           : stats.map((stat) => (
-              <Card key={stat.title}>
+              <Card
+                key={stat.title}
+                onMouseEnter={() => stat.iconRef?.current?.startAnimation()}
+                onMouseLeave={() => stat.iconRef?.current?.stopAnimation()}
+              >
                 <CardHeader className="flex-row items-center justify-between">
                   <CardDescription>{stat.title}</CardDescription>
                   {stat.icon}
@@ -316,7 +371,7 @@ export default function DashboardPage() {
               <ChartContainer className="h-64 w-full" config={trendChartConfig}>
                 <AreaChart
                   data={trendChartData}
-                  margin={{ left: 12, right: 12 }}
+                  margin={{ left: 24, right: 24, top: 10, bottom: 10 }}
                 >
                   <CartesianGrid vertical={false} />
                   <XAxis
@@ -324,7 +379,9 @@ export default function DashboardPage() {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    minTickGap={18}
+                    interval={0}
+                    tick={{ fontSize: 11 }}
+                    padding={{ left: 10, right: 10 }}
                   />
                   <ChartTooltip
                     cursor={false}
@@ -403,7 +460,7 @@ export default function DashboardPage() {
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <RiBriefcaseLine />
+                  <AnimatedBriefcase />
                 </EmptyMedia>
                 <EmptyTitle>No activity yet</EmptyTitle>
                 <EmptyDescription>

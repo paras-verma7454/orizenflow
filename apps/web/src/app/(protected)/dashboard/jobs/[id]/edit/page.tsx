@@ -53,6 +53,7 @@ import { apiClient } from "@/lib/api/client";
 
 interface Job {
   id: string;
+  shortId: string;
   title: string;
   description: string;
   organizationId: string;

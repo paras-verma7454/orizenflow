@@ -8,6 +8,7 @@ import { describeRoute, resolver } from "hono-openapi"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
 
+import { generateShortId } from "@/lib/utils"
 import { authMiddleware } from "@/middlewares"
 
 const jobQuestionSchema = z.object({
@@ -47,9 +48,7 @@ const slugify = (value: string) =>
     .slice(0, 80)
 
 const createJobSlug = (title: string) => {
-  const base = slugify(title)
-  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 6)
-  return `${base || "job"}-${suffix}`
+  return slugify(title) || "job"
 }
 
 const stripMarkdownHeadingHashes = (value: string) =>
@@ -144,10 +143,12 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
 
       const data = c.req.valid("json")
       const { questions, ...jobData } = data
+      const shortId = generateShortId()
       const [inserted] = await db
         .insert(jobs)
         .values({
           ...jobData,
+          shortId,
           questionsJson: JSON.stringify(questions),
           slug: createJobSlug(data.title),
           organizationId: orgId,
@@ -337,7 +338,7 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
 
       const data = c.req.valid("json")
       const [existing] = await db
-        .select({ slug: jobs.slug })
+        .select({ slug: jobs.slug, title: jobs.title })
         .from(jobs)
         .where(and(eq(jobs.id, id), eq(jobs.organizationId, orgId)))
 
@@ -346,12 +347,18 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
       }
 
       const { questions, ...jobData } = data
+
+      // Auto-regenerate slug if title is being updated
+      const newSlug = data.title && data.title !== existing.title
+        ? createJobSlug(data.title)
+        : existing.slug || createJobSlug(existing.title)
+
       const [updated] = await db
         .update(jobs)
         .set({
           ...jobData,
           ...(questions ? { questionsJson: JSON.stringify(questions) } : {}),
-          slug: existing.slug || createJobSlug(data.title || "job"),
+          slug: newSlug,
           updatedAt: new Date(),
         })
         .where(and(eq(jobs.id, id), eq(jobs.organizationId, orgId)))

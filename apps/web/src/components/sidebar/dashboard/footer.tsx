@@ -1,13 +1,14 @@
-"use client"
+"use client";
 
-import { env } from "@packages/env/web-next"
-import { RiExpandUpDownLine, RiLogoutBoxLine, RiMessage2Line, RiMoonLine, RiSunLine } from "@remixicon/react"
-import { type User } from "better-auth/types"
-import Link from "next/link"
-import { redirect } from "next/navigation"
-import { useTheme } from "next-themes"
+import { env } from "@packages/env/web-next";
+import { ChevronsUpDown, LogOut, MessageSquare } from "lucide-react";
+import { type User } from "better-auth/types";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useRef } from "react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,32 +17,46 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
-import { authClient } from "@/lib/auth/client"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/sidebar";
+import { authClient } from "@/lib/auth/client";
+import { cn } from "@/lib/utils";
+import {
+  AnimatedSun,
+  type AnimatedSunHandle,
+  AnimatedMoon,
+  type AnimatedMoonHandle,
+} from "@/components/icons/animated-sun-moon";
 
 export function SidebarDashboardFooter({ user }: { user: User }) {
-  const { isMobile } = useSidebar()
-  const { theme, setTheme } = useTheme()
+  const sunRef = useRef<AnimatedSunHandle>(null);
+  const moonRef = useRef<AnimatedMoonHandle>(null);
+  const { isMobile } = useSidebar();
+  const { theme, setTheme } = useTheme();
 
   const smartToggle = () => {
-    const prefersDarkScheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+    const prefersDarkScheme = window.matchMedia(
+      "(prefers-color-scheme: dark)",
+    ).matches;
     if (theme === "system") {
-      setTheme(prefersDarkScheme ? "light" : "dark")
-    } else if ((theme === "light" && !prefersDarkScheme) || (theme === "dark" && prefersDarkScheme)) {
-      setTheme(theme === "light" ? "dark" : "light")
+      setTheme(prefersDarkScheme ? "light" : "dark");
+    } else if (
+      (theme === "light" && !prefersDarkScheme) ||
+      (theme === "dark" && prefersDarkScheme)
+    ) {
+      setTheme(theme === "light" ? "dark" : "light");
     } else {
-      setTheme("system")
+      setTheme("system");
     }
-  }
+  };
 
-  const modeLabel = theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light"
+  const modeLabel =
+    theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light";
 
   return (
     <SidebarMenu className="space-y-1.5">
@@ -50,11 +65,21 @@ export function SidebarDashboardFooter({ user }: { user: User }) {
           className="cursor-pointer border"
           onClick={smartToggle}
           tooltip="Toggle theme"
+          onMouseEnter={() => {
+            sunRef.current?.startAnimation();
+            moonRef.current?.startAnimation();
+          }}
+          onMouseLeave={() => {
+            sunRef.current?.stopAnimation();
+            moonRef.current?.stopAnimation();
+          }}
         >
-          <RiSunLine className="dark:hidden" />
-          <RiMoonLine className="hidden dark:block" />
+          <AnimatedSun ref={sunRef} className="dark:hidden" />
+          <AnimatedMoon ref={moonRef} className="hidden dark:block" />
           <span>Theme</span>
-          <span className="ml-auto text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">{modeLabel}</span>
+          <span className="ml-auto text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+            {modeLabel}
+          </span>
         </SidebarMenuButton>
       </SidebarMenuItem>
 
@@ -76,10 +101,13 @@ export function SidebarDashboardFooter({ user }: { user: User }) {
               <span className="truncate font-medium">{user.name}</span>
               <span className="truncate text-xs">{user.email}</span>
             </div>
-            <RiExpandUpDownLine className="ml-auto size-4" />
+            <ChevronsUpDown className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className={cn("w-(--anchor-width) min-w-56 rounded-lg", isMobile ? "mb-1" : "ml-3")}
+            className={cn(
+              "w-(--anchor-width) min-w-56 rounded-lg",
+              isMobile ? "mb-1" : "ml-3",
+            )}
             side={isMobile ? "top" : "right"}
             align="end"
             sideOffset={4}
@@ -110,23 +138,23 @@ export function SidebarDashboardFooter({ user }: { user: User }) {
                   />
                 }
               >
-                <RiMessage2Line />
+                <MessageSquare />
                 Feedback
               </DropdownMenuItem>
             )}
             <DropdownMenuItem
               className="cursor-pointer"
               onClick={async () => {
-                await authClient.signOut()
-                redirect("/")
+                await authClient.signOut();
+                redirect("/");
               }}
             >
-              <RiLogoutBoxLine />
+              <LogOut />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
-  )
+  );
 }

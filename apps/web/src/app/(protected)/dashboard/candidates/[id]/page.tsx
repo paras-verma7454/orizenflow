@@ -5,8 +5,6 @@ import {
   RiBriefcaseLine,
   RiExternalLinkLine,
   RiFileTextLine,
-  RiGithubLine,
-  RiLinkedinBoxLine,
   RiLoader4Line,
   RiMailLine,
   RiRobot2Line,
@@ -15,9 +13,17 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  AnimatedGithub,
+  type GithubIconHandle,
+} from "@/components/icons/animated-github";
+import {
+  AnimatedLinkedin,
+  type LinkedinIconHandle,
+} from "@/components/icons/animated-linkedin";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -319,6 +325,8 @@ function parseEvaluationBreakdown(raw: string | null) {
 export default function CandidateProfilePage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const linkedinRef = useRef<LinkedinIconHandle>(null);
+  const githubRef = useRef<GithubIconHandle>(null);
   const [optimisticStatus, setOptimisticStatus] =
     useState<CandidateStatus | null>(null);
   const [selectedStage, setSelectedStage] = useState<CandidateStatus | null>(
@@ -391,33 +399,6 @@ export default function CandidateProfilePage() {
     },
     onSettled: () => {
       setOptimisticStatus(null);
-    },
-  });
-
-  const reviewMutation = useMutation({
-    mutationFn: async (force: boolean) => {
-      const res = await apiClient.v1.candidates[":id"].review.$post({
-        param: { id: params.id },
-        json: { force },
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(body?.error?.message ?? "Failed to queue review");
-      }
-      return res.json();
-    },
-    onSuccess: (result) => {
-      toast.success(
-        `Review queued for candidate (${result.data.applicationId})`,
-      );
-      queryClient.invalidateQueries({
-        queryKey: ["candidate-evaluation", params.id],
-      });
-    },
-    onError: (error) => {
-      toast.error(error.message);
     },
   });
 
@@ -620,9 +601,7 @@ export default function CandidateProfilePage() {
 
                 {!evaluation ? (
                   <p className="text-sm text-muted-foreground">
-                    No evaluation yet. Click{" "}
-                    <span className="font-medium">Review now</span> to generate
-                    one.
+                    No evaluation available yet.
                   </p>
                 ) : (
                   <div className="space-y-5">
@@ -749,30 +728,9 @@ export default function CandidateProfilePage() {
           <Card className="border-2 border-slate-300/80 dark:border-slate-700/80">
             <CardHeader>
               <CardTitle>Candidate Actions</CardTitle>
-              <CardDescription>
-                Status, review actions, and profile links
-              </CardDescription>
+              <CardDescription>Status and profile links</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  className="cursor-pointer"
-                  disabled={reviewMutation.isPending}
-                  onClick={() => reviewMutation.mutate(false)}
-                >
-                  {reviewMutation.isPending ? "Queueing..." : "Review now"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="cursor-pointer"
-                  disabled={reviewMutation.isPending}
-                  onClick={() => reviewMutation.mutate(true)}
-                >
-                  Re-run review
-                </Button>
-              </div>
-
               <a
                 href={`mailto:${candidate.email}`}
                 className="hover:bg-muted flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 transition-colors dark:border-slate-700/80"
@@ -795,8 +753,14 @@ export default function CandidateProfilePage() {
                   target="_blank"
                   rel="noreferrer"
                   className="hover:bg-muted flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 transition-colors dark:border-slate-700/80"
+                  onMouseEnter={() => linkedinRef.current?.startAnimation()}
+                  onMouseLeave={() => linkedinRef.current?.stopAnimation()}
                 >
-                  <RiLinkedinBoxLine className="size-4 text-muted-foreground" />
+                  <AnimatedLinkedin
+                    ref={linkedinRef}
+                    className="size-4 text-muted-foreground"
+                    size={16}
+                  />
                   <span className="text-sm">LinkedIn</span>
                 </a>
               ) : null}
@@ -806,8 +770,14 @@ export default function CandidateProfilePage() {
                   target="_blank"
                   rel="noreferrer"
                   className="hover:bg-muted flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 transition-colors dark:border-slate-700/80"
+                  onMouseEnter={() => githubRef.current?.startAnimation()}
+                  onMouseLeave={() => githubRef.current?.stopAnimation()}
                 >
-                  <RiGithubLine className="size-4 text-muted-foreground" />
+                  <AnimatedGithub
+                    ref={githubRef}
+                    className="size-4 text-muted-foreground"
+                    size={16}
+                  />
                   <span className="text-sm">GitHub</span>
                 </a>
               ) : null}

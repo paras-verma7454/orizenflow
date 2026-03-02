@@ -2,7 +2,7 @@
 
 import { RiLoaderLine, RiMenuLine } from "@remixicon/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Access } from "@/components/access";
@@ -20,6 +20,7 @@ import { config } from "@/lib/config";
 
 export function Navbar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = authClient.useSession();
 
   // Check if we're on a public jobs page: /[orgSlug] or /[orgSlug]/[jobSlug]
@@ -37,6 +38,7 @@ export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
 
   if (pathname?.startsWith("/dashboard")) return null;
+  if (searchParams?.get("embed") === "1") return null;
 
   return (
     <div className="fixed top-0 left-0 z-40 w-full border-b border-border bg-background/90 backdrop-blur-md">

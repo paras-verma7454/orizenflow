@@ -1,13 +1,8 @@
 "use client";
 
-import {
-  RiGithubFill,
-  RiGoogleFill,
-  RiLayoutGridFill,
-  RiLoaderLine,
-} from "@remixicon/react";
+import { RiGoogleFill, RiLayoutGridFill, RiLoaderLine } from "@remixicon/react";
 import { useForm } from "@tanstack/react-form";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -26,9 +21,12 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  AnimatedGithub,
+  type GithubIconHandle,
+} from "@/components/icons/animated-github";
 import { authClient } from "@/lib/auth/client";
 import { config } from "@/lib/config";
-import { GithubIcon } from "@/components/ui/github";
 
 const formSchema = z.object({
   email: z.email({ message: "Please enter a valid email address." }),
@@ -37,6 +35,7 @@ const formSchema = z.object({
 export function Access() {
   if (config.features.authDisabled) return null;
 
+  const githubRef = useRef<GithubIconHandle>(null);
   const [loader, setLoader] = useState<"email" | "github" | "google" | null>(
     null,
   );
@@ -149,6 +148,8 @@ export function Access() {
               variant="outline"
               type="button"
               className="w-full cursor-pointer"
+              onMouseEnter={() => githubRef.current?.startAnimation()}
+              onMouseLeave={() => githubRef.current?.stopAnimation()}
               onClick={async () => {
                 setLoader("github");
                 const res = await authClient.signIn.social({
@@ -165,7 +166,7 @@ export function Access() {
               {loader === "github" ? (
                 <RiLoaderLine className="size-5 animate-spin" />
               ) : (
-                <GithubIcon size={20} />
+                <AnimatedGithub ref={githubRef} className="size-5" size={20} />
               )}
               Continue with Github
             </Button>

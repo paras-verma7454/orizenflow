@@ -19,6 +19,7 @@
     "db:push": "turbo run build --filter=@packages/env && bun --cwd packages/db drizzle-kit push",
     "db:studio": "turbo run build --filter=@packages/env && bun --cwd packages/db drizzle-kit studio",
     "dev": "turbo run dev --ui tui",
+    "dev:web-api": "turbo run dev --filter=@web/next --filter=@api/hono --ui tui",
     "devtools": "turbo devtools",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
