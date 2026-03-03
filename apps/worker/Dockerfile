@@ -22,6 +22,6 @@ RUN bun install --ignore-scripts
 
 COPY . .
 
-RUN bun run build --filter=@packages/env --filter=@packages/db --filter=@packages/queue --filter=@worker/bullmq
+RUN cd /app/apps/worker && bun run build
 
 CMD ["bun", "--cwd", "apps/worker", "run", "start"]
