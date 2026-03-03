@@ -15,6 +15,8 @@ RUN bun install --frozen-lockfile --ignore-scripts
 COPY --from=prepare /app/out/full/ .
 ENV NODE_ENV=production
 ENV SKIP_ENV_VALIDATION=true
+ENV HONO_APP_URL=http://localhost:4000
+ENV HONO_TRUSTED_ORIGINS=http://localhost:3000
 RUN bun run build
 
 FROM base AS runner

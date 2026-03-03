@@ -28,6 +28,8 @@ RUN echo "# Build time env" > .env
 
 ENV NODE_ENV=production
 ENV SKIP_ENV_VALIDATION=true
+ENV HONO_APP_URL=http://api:4000
+ENV HONO_TRUSTED_ORIGINS=http://localhost:3000
 RUN bun run build --filter=@packages/env --filter=@packages/db --filter=@packages/queue --filter=@worker/bullmq
 
 FROM mcr.microsoft.com/playwright:v1.58.2-noble

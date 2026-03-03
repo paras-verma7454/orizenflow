@@ -15,6 +15,8 @@ RUN bun install --frozen-lockfile --ignore-scripts
 COPY --from=prepare /app/out/full/ .
 ENV NODE_ENV=production
 ENV SKIP_ENV_VALIDATION=true
+ENV NEXT_PUBLIC_API_URL=http://api:4000
+ENV NEXT_PUBLIC_APP_URL=http://localhost:3000
 RUN bun run build
 
 FROM base AS runner
