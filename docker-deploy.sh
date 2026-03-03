@@ -16,11 +16,7 @@ if [ "${CLEAN_BUILD:-0}" = "1" ]; then
 	echo "Clean build enabled (CLEAN_BUILD=1)"
 fi
 
-# 1. Stop existing containers
-echo "Stopping existing containers..."
-docker compose down
-
-# 2. Build images one by one
+# 1. Build images one by one
 echo "Building API image..."
 docker compose build ${BUILD_FLAGS} api
 
@@ -30,9 +26,22 @@ docker compose build ${BUILD_FLAGS} web
 echo "Building Worker image..."
 docker compose build ${BUILD_FLAGS} worker-fetch
 
-# 3. Start services
-echo "Starting services..."
-docker compose up -d
+# 2. Start core dependencies if not running
+echo "Ensuring Redis is running..."
+docker compose up -d redis
+
+# 3. Recreate services one-by-one to minimize downtime
+echo "Recreating API service..."
+docker compose up -d --no-deps --force-recreate api
+
+echo "Recreating Web service..."
+docker compose up -d --no-deps --force-recreate web
+
+echo "Recreating Worker Fetch service..."
+docker compose up -d --no-deps --force-recreate worker-fetch
+
+echo "Recreating Worker Browser service..."
+docker compose up -d --no-deps --force-recreate worker-browser
 
 # 4. Wait a moment for services to start
 sleep 5
@@ -60,7 +69,7 @@ echo "  docker compose logs -f worker-fetch"
 echo "  docker compose logs -f worker-browser"
 echo ""
 echo "Rebuild without downtime:"
-echo "  docker compose build --no-cache && docker compose up -d --force-recreate"
+echo "  docker compose build --no-cache api web worker-fetch && docker compose up -d redis && docker compose up -d --no-deps --force-recreate api web worker-fetch worker-browser"
 echo ""
 echo "Force clean deploy build:"
 echo "  CLEAN_BUILD=1 bash docker-deploy.sh"

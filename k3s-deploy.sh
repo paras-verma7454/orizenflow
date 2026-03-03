@@ -1,8 +1,16 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # K3s Deployment Script for Orizen Flow
 
 echo "=== Setting up k3s deployment ==="
+
+BUILD_FLAGS=""
+if [ "${CLEAN_BUILD:-0}" = "1" ]; then
+    BUILD_FLAGS="--no-cache"
+    echo "Clean build enabled (CLEAN_BUILD=1)"
+fi
 
 # 1. Configure kubectl
 mkdir -p ~/.kube
@@ -16,13 +24,16 @@ kubectl get nodes
 
 # 3. Build Docker images one by one
 echo "Building API image..."
-docker compose build --no-cache api
+docker compose build ${BUILD_FLAGS} api
 
 echo "Building Web image..."
-docker compose build --no-cache web
+docker compose build ${BUILD_FLAGS} web
 
-echo "Building Worker image..."
-docker compose build --no-cache worker
+echo "Building Worker Fetch image..."
+docker compose build ${BUILD_FLAGS} worker-fetch
+
+echo "Building Worker Browser image..."
+docker compose build ${BUILD_FLAGS} worker-browser
 
 # 4. Import images to k3s
 echo "Importing images to k3s..."
@@ -54,6 +65,7 @@ kompose convert -f docker-compose.yml -o k8s/
 # 9. Update imagePullPolicy to Never (for local images)
 echo "Updating imagePullPolicy..."
 find k8s/ -name "*.yaml" -type f -exec sed -i 's/imagePullPolicy: ""/imagePullPolicy: Never/g' {} \;
+find k8s/ -name "*.yaml" -type f -exec sed -i 's/imagePullPolicy: Always/imagePullPolicy: Never/g' {} \;
 
 # 10. Deploy to k3s
 echo "Deploying to k3s..."
@@ -75,4 +87,5 @@ echo ""
 echo "View logs:"
 echo "  kubectl logs -f deployment/api -n orizen-flow"
 echo "  kubectl logs -f deployment/web -n orizen-flow"
-echo "  kubectl logs -f deployment/worker -n orizen-flow"
+echo "  kubectl logs -f deployment/worker-fetch -n orizen-flow"
+echo "  kubectl logs -f deployment/worker-browser -n orizen-flow"
