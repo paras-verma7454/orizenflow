@@ -627,41 +627,41 @@ export default function Home() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
-              className="md:col-span-2 group relative overflow-hidden rounded-3xl border border-neutral-200 bg-neutral-900 p-8 shadow-sm text-white"
+              className="md:col-span-2 group relative overflow-hidden rounded-3xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-zinc-900"
             >
-              <div className="absolute top-0 right-0 w-full h-full bg-linear-to-br from-violet-600/20 to-transparent pointer-events-none" />
+              <div className="absolute top-0 right-0 w-full h-full bg-linear-to-br from-violet-500/10 to-transparent dark:from-violet-600/20 pointer-events-none" />
 
               <div className="relative z-10 flex flex-col h-full">
                 <div className="mb-6">
-                  <h3 className="text-xl font-bold mb-2">Track & Move</h3>
-                  <p className="text-neutral-400 text-sm">
-                    Drag-and-drop workflow management.
+                  <h3 className="text-xl font-bold mb-2">Track Pipeline</h3>
+                  <p className="text-neutral-500 text-sm dark:text-neutral-400">
+                    Keep candidates organized across hiring stages.
                   </p>
                 </div>
 
                 {/* Micro-UI: Kanban Column */}
-                <div className="flex-1 bg-neutral-800/50 rounded-xl p-3 border border-neutral-700/50 flex flex-col gap-2">
-                  <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
+                <div className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 p-3 flex flex-col gap-2 dark:border-neutral-800 dark:bg-neutral-950/60">
+                  <div className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
                     In Review
                   </div>
                   {[1, 2].map((_, i) => (
                     <div
                       key={i}
-                      className="bg-neutral-800 p-3 rounded-lg border border-neutral-700 shadow-sm flex items-center justify-between"
+                      className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm flex items-center justify-between dark:border-neutral-800 dark:bg-neutral-900"
                     >
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-neutral-700 flex items-center justify-center text-[10px]">
+                        <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 flex items-center justify-center text-[10px]">
                           {i === 0 ? "JD" : "MK"}
                         </div>
-                        <div className="h-1.5 w-12 bg-neutral-700 rounded-full" />
+                        <div className="h-1.5 w-12 rounded-full bg-neutral-200 dark:bg-neutral-700" />
                       </div>
                       <div
                         className={`w-2 h-2 rounded-full ${i === 0 ? "bg-violet-500" : "bg-orange-500"}`}
                       />
                     </div>
                   ))}
-                  <div className="mt-2 border-2 border-dashed border-neutral-700 rounded-lg p-2 text-center text-[10px] text-neutral-500">
-                    Drop here
+                  <div className="mt-2 rounded-lg border-2 border-dashed border-neutral-300 bg-white/60 p-2 text-center text-[10px] text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40">
+                    Next stage
                   </div>
                 </div>
               </div>
