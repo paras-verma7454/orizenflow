@@ -1,7 +1,7 @@
 import { env } from "@packages/env/web-next"
 
 const platformAdminEmails = new Set(
-  env.ADMIN_EMAILS
+  (env.ADMIN_EMAILS || "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean),

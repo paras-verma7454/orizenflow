@@ -26,10 +26,12 @@ COPY --from=prepare /app/out/full/ .
 # Create minimal .env for build time (actual env variables come from docker compose)
 RUN echo "# Build time env" > .env
 
-ENV NODE_ENV=production
-ENV SKIP_ENV_VALIDATION=true
-ENV HONO_APP_URL=http://api:4000
-ENV HONO_TRUSTED_ORIGINS=http://localhost:3000
+ARG NODE_ENV=production
+ARG SKIP_ENV_VALIDATION=true
+ARG ADMIN_EMAILS=""
+ENV NODE_ENV=${NODE_ENV}
+ENV SKIP_ENV_VALIDATION=${SKIP_ENV_VALIDATION}
+ENV ADMIN_EMAILS=${ADMIN_EMAILS}
 RUN bun run build --filter=@packages/env --filter=@packages/db --filter=@packages/queue --filter=@worker/bullmq
 
 FROM mcr.microsoft.com/playwright:v1.58.2-noble

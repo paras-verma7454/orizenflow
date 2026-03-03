@@ -13,10 +13,12 @@ COPY --from=prepare /app/out/json/ .
 COPY --from=prepare /app/out/bun.lock .
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY --from=prepare /app/out/full/ .
-ENV NODE_ENV=production
-ENV SKIP_ENV_VALIDATION=true
-ENV NEXT_PUBLIC_API_URL=http://api:4000
-ENV NEXT_PUBLIC_APP_URL=http://localhost:3000
+ARG NODE_ENV=production
+ARG SKIP_ENV_VALIDATION=true
+ARG ADMIN_EMAILS=""
+ENV NODE_ENV=${NODE_ENV}
+ENV SKIP_ENV_VALIDATION=${SKIP_ENV_VALIDATION}
+ENV ADMIN_EMAILS=${ADMIN_EMAILS}
 RUN bun run build
 
 FROM base AS runner
