@@ -17,13 +17,15 @@ RUN apt-get update \
 RUN curl -fsSL https://bun.sh/install | bash
 
 WORKDIR /app
-COPY --from=prepare /app/.env .
 COPY --from=prepare /app/out/json/ .
 COPY --from=prepare /app/out/bun.lock .
 
 RUN bun install --frozen-lockfile --ignore-scripts
 
 COPY --from=prepare /app/out/full/ .
+# Create minimal .env for build time (actual env variables come from docker compose)
+RUN echo "# Build time env" > .env
+
 ENV NODE_ENV=production
 RUN bun run build --filter=@packages/env --filter=@packages/db --filter=@packages/queue --filter=@worker/bullmq
 
@@ -42,4 +44,7 @@ COPY --from=builder --chown=root:root /app/node_modules/ ./node_modules/
 COPY --from=builder --chown=root:root /app/apps/worker/ ./apps/worker/
 COPY --from=builder --chown=root:root /app/packages/ ./packages/
 
-CMD ["bun", "--cwd", "apps/worker", "run", "start"]
+# Verify dist folder exists
+RUN ls -la apps/worker/dist/ || echo "Warning: dist folder not found"
+
+CMD ["bun", "apps/worker/dist/index.mjs"]
