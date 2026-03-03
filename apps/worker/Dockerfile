@@ -38,9 +38,8 @@ RUN apt-get update \
 RUN curl -fsSL https://bun.sh/install | bash
 
 WORKDIR /app
-COPY --from=builder --chown=bun:bun /app/node_modules/ ./node_modules/
-COPY --from=builder --chown=bun:bun /app/apps/worker/ ./apps/worker/
-COPY --from=builder --chown=bun:bun /app/packages/ ./packages/
+COPY --from=builder --chown=root:root /app/node_modules/ ./node_modules/
+COPY --from=builder --chown=root:root /app/apps/worker/ ./apps/worker/
+COPY --from=builder --chown=root:root /app/packages/ ./packages/
 
-USER bun
 CMD ["bun", "--cwd", "apps/worker", "run", "start"]
