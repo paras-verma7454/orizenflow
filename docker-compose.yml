@@ -33,6 +33,7 @@ services:
         - NODE_ENV=production
         - SKIP_ENV_VALIDATION=true
         - ADMIN_EMAILS=${ADMIN_EMAILS:-}
+        - INTERNAL_API_URL=http://api:4000
     image: orizen-flow-web:latest
     restart: unless-stopped
     env_file:
