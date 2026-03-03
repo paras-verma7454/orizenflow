@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
+import { RiArrowLeftLine } from "@remixicon/react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -149,7 +151,12 @@ export async function generateMetadata({
       : rawDescription;
 
   const pageUrl = `${config.app.url}/${orgSlug}/${job.slug}/${job.shortId}`;
-  const ogImage = `${config.app.url}/api/og/home?t=${Date.now()}`;
+  const ogImage = `${config.app.url}/api/og/job?${new URLSearchParams({
+    jobTitle: job.title,
+    orgName: orgName,
+    jobType: job.jobType || "",
+    location: job.location || "",
+  }).toString()}`;
 
   const keywords = [
     job.title,
@@ -263,6 +270,13 @@ export default async function PublicJobApplyPage({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-16 pt-20 sm:px-6 lg:px-8">
+      <Link
+        href={`/${orgSlug}`}
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <RiArrowLeftLine className="size-4" />
+        Back to Jobs
+      </Link>
       <div className="rounded-3xl border-2 border-slate-300/80 bg-slate-100 p-4 dark:border-slate-700/80 dark:bg-muted/30 sm:p-6 lg:p-8">
         <div className="space-y-8">
           <div className="space-y-3">

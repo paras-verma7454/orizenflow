@@ -65,6 +65,10 @@ export async function generateMetadata({
   const { organization, data: jobs } = result;
   const title = `${organization.name} — Careers`;
   const description = `Join ${organization.name}. Browse ${jobs.length} open position${jobs.length !== 1 ? "s" : ""} and find your next opportunity.`;
+  const ogImage = `${config.app.url}/api/og/organization?${new URLSearchParams({
+    orgName: organization.name,
+    jobCount: String(jobs.length),
+  }).toString()}`;
 
   return {
     title,
@@ -75,6 +79,14 @@ export async function generateMetadata({
       url: `${config.app.url}/${orgSlug}`,
       type: "website",
       siteName: "Orizen Flow",
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: title,
+        },
+      ],
     },
   };
 }

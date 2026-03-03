@@ -5,6 +5,7 @@ import {
   RiBriefcaseLine,
   RiBuildingLine,
   RiDeleteBinLine,
+  RiFileCopyLine,
   RiHomeLine,
   RiMapPinLine,
   RiRemoteControlLine,
@@ -47,6 +48,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiClient } from "@/lib/api/client";
+import { config } from "@/lib/config";
 import {
   AnimatedPlus,
   type PlusIconHandle,
@@ -64,6 +66,10 @@ interface Job {
   salaryRange: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface OrganizationProfile {
+  slug: string;
 }
 
 const JOB_TYPES: Record<
@@ -260,6 +266,16 @@ export default function JobsPage() {
   const createJobRef = useRef<PlusIconHandle>(null);
   const setUpOrgRef = useRef<PlusIconHandle>(null);
 
+  const { data: organizationProfile } = useQuery({
+    queryKey: ["organization-profile"],
+    queryFn: async () => {
+      const res = await apiClient.v1.organization.profile.$get();
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.data as OrganizationProfile;
+    },
+  });
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["jobs"],
     queryFn: async () => {
@@ -284,6 +300,22 @@ export default function JobsPage() {
   const countByStatus = (status: string) =>
     allJobs.filter((j) => j.status === status).length;
 
+  const handleCopyOrgLink = async () => {
+    if (!organizationProfile?.slug) {
+      toast.error("Organization link is not available yet");
+      return;
+    }
+
+    const link = `${config.app.url}/${organizationProfile.slug}`;
+
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Organization link copied");
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-6 pt-14">
       <div className="flex items-center justify-between">
@@ -293,15 +325,26 @@ export default function JobsPage() {
             Manage your job postings.
           </p>
         </div>
-        <Button
-          className="cursor-pointer"
-          render={<Link href="/dashboard/jobs/new" />}
-          onMouseEnter={() => createJobRef.current?.startAnimation()}
-          onMouseLeave={() => createJobRef.current?.stopAnimation()}
-        >
-          <AnimatedPlus ref={createJobRef} className="size-4" />
-          Create Job
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="cursor-pointer"
+            onClick={handleCopyOrgLink}
+            disabled={!organizationProfile?.slug}
+          >
+            <RiFileCopyLine />
+            Copy Organization Link
+          </Button>
+          <Button
+            className="cursor-pointer"
+            render={<Link href="/dashboard/jobs/new" />}
+            onMouseEnter={() => createJobRef.current?.startAnimation()}
+            onMouseLeave={() => createJobRef.current?.stopAnimation()}
+          >
+            <AnimatedPlus ref={createJobRef} className="size-4" />
+            Create Job
+          </Button>
+        </div>
       </div>
 
       {!isLoading && allJobs.length > 0 && (
