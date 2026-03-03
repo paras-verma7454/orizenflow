@@ -8,6 +8,21 @@ export async function GET(request: Request) {
   const orgName = searchParams.get("orgName") ?? "Organization";
   const jobType = searchParams.get("jobType") ?? "";
   const location = searchParams.get("location") ?? "";
+  const orgLogo = searchParams.get("orgLogo");
+
+  const fontData900 = await fetch(
+    new URL(
+      "https://github.com/google/fonts/raw/main/ofl/inter/Inter-Black.ttf",
+      import.meta.url,
+    ),
+  ).then((res) => res.arrayBuffer());
+
+  const fontData500 = await fetch(
+    new URL(
+      "https://github.com/google/fonts/raw/main/ofl/inter/Inter-Medium.ttf",
+      import.meta.url,
+    ),
+  ).then((res) => res.arrayBuffer());
 
   const jobTypeColorMap: Record<string, string> = {
     remote: "rgba(34, 197, 94, 0.9)",
@@ -29,7 +44,7 @@ export async function GET(request: Request) {
           "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f1419 100%)",
         position: "relative",
         overflow: "hidden",
-        fontFamily: "system-ui",
+        fontFamily: '"Inter"',
       }}
     >
       {/* Accent gradient blob */}
@@ -71,6 +86,18 @@ export async function GET(request: Request) {
         }}
       >
         <div>
+          {orgLogo && (
+            <img
+              src={orgLogo}
+              width="64"
+              height="64"
+              style={{
+                borderRadius: "12px",
+                marginBottom: "24px",
+                objectFit: "cover",
+              }}
+            />
+          )}
           <div
             style={{
               display: "flex",
@@ -167,6 +194,20 @@ export async function GET(request: Request) {
       module: import("@takumi-rs/wasm/next"),
       width: 1200,
       height: 630,
+      fonts: [
+        {
+          name: "Inter",
+          data: fontData900,
+          style: "normal",
+          weight: 900,
+        },
+        {
+          name: "Inter",
+          data: fontData500,
+          style: "normal",
+          weight: 500,
+        },
+      ],
     },
   );
 

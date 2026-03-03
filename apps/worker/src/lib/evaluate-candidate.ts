@@ -1699,6 +1699,7 @@ export async function evaluateCandidateJob(
     summary: parsed.summary?.slice(0, 200),
   })
   const finalScore = applyRoleAwareScoreAdjustments(parsed.score ?? 0, roleFamily, enrichment)
+  const rawAiScore = parsed.score ?? 0
   parsed.score = finalScore
   parsed.roleFamily = roleFamily
   parsed.rubricVersion = RUBRIC_VERSION
@@ -1723,6 +1724,17 @@ export async function evaluateCandidateJob(
   }
 
   const persistedScore = parsed.score ?? finalScore
+
+  console.log("[evaluateCandidateJob] Score transition:", {
+    applicationId: application.id,
+    rawAiScore,
+    scoreAfterRoleAdjustments: finalScore,
+    scoreAfterDeterministicCaps: parsed.score,
+    persistedScore,
+    capRulesApplied,
+    evidenceIntegrityScore: integrity.score,
+    evidenceIntegrityTier: integrity.tier,
+  })
 
   const [persistedEvaluation] = await db
     .insert(candidateEvaluations)

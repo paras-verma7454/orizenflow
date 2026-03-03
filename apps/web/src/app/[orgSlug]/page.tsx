@@ -65,9 +65,16 @@ export async function generateMetadata({
   const { organization, data: jobs } = result;
   const title = `${organization.name} — Careers`;
   const description = `Join ${organization.name}. Browse ${jobs.length} open position${jobs.length !== 1 ? "s" : ""} and find your next opportunity.`;
+  const orgLogo =
+    organization.logo ||
+    (organization.websiteUrl
+      ? `https://www.google.com/s2/favicons?domain=${organization.websiteUrl}&sz=128`
+      : "");
+
   const ogImage = `${config.app.url}/api/og/organization?${new URLSearchParams({
     orgName: organization.name,
     jobCount: String(jobs.length),
+    orgLogo,
   }).toString()}`;
 
   return {
