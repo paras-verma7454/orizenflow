@@ -6,17 +6,22 @@ import { createMDX } from "fumadocs-mdx/next"
 
 getSafeEnv(env, "@web/next")
 
+const apiUrl =
+  process.env.INTERNAL_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:4000"
+
 const nextConfig: NextConfig = {
   reactCompiler: true,
   rewrites: async () => {
     return [
       {
         source: "/api/:path*",
-        destination: `${env.NEXT_PUBLIC_API_URL}/api/:path*`,
+        destination: `${apiUrl}/api/:path*`,
       },
       {
         source: "/api/search",
-        destination: `${env.NEXT_PUBLIC_APP_URL}/api/search`,
+        destination: `${apiUrl}/api/search`,
       },
       {
         source: "/blog/:path*.md",
