@@ -27,6 +27,7 @@ COPY --from=prepare /app/out/full/ .
 RUN echo "# Build time env" > .env
 
 ENV NODE_ENV=production
+ENV SKIP_ENV_VALIDATION=true
 RUN bun run build --filter=@packages/env --filter=@packages/db --filter=@packages/queue --filter=@worker/bullmq
 
 FROM mcr.microsoft.com/playwright:v1.58.2-noble
