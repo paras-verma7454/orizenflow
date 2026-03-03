@@ -37,7 +37,7 @@ export const config = {
 
   // Feature flags
   features: {
-    authDisabled: env.NEXT_PUBLIC_NODE_ENV === "production",
+    authDisabled: false,
   },
 
   // Sidebar navigation configuration (minimalist for now)
