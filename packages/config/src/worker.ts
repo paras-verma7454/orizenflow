@@ -8,6 +8,7 @@ export const env = createEnv({
   server: {
     NODE_ENV,
     REDIS_URL: z.url().default("redis://localhost:6379"),
+    WORKER_TYPE: z.enum(["fetch", "browser"]).default("fetch"),
     WORKER_CONCURRENCY: z.coerce.number().default(2),
     SARVAM_API_KEY: z.string().min(1),
     GITHUB_TOKEN: z.string().min(1).optional(),
@@ -18,6 +19,7 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     REDIS_URL: process.env.REDIS_URL,
+    WORKER_TYPE: process.env.WORKER_TYPE,
     WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY,
     SARVAM_API_KEY: process.env.SARVAM_API_KEY,
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,

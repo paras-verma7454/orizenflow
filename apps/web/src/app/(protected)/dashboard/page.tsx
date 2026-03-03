@@ -3,12 +3,13 @@
 import { ArrowUpRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   XAxis,
   YAxis,
@@ -93,13 +94,20 @@ const statusOptions = [
   { value: "rejected", label: "Rejected" },
 ] as const;
 
+const dashboardFilterOptions = [
+  { value: "all", label: "All" },
+  { value: "applied", label: "Applied" },
+  { value: "interview", label: "Interview" },
+  { value: "hired", label: "Hired" },
+] as const;
+
 const statusLabelMap = Object.fromEntries(
   statusOptions.map((item) => [item.value, item.label]),
 ) as Record<CandidateStatus, string>;
 
 const statusChartConfig = {
   total: {
-    label: "Candidates",
+    label: "Candidates ",
     color: "var(--chart-2)",
   },
 } satisfies ChartConfig;
@@ -120,6 +128,15 @@ const statusBadgeVariantMap = {
   rejected: "destructive",
 } as const;
 
+const pipelineStageColorMap: Record<string, string> = {
+  Applied: "var(--chart-1)",
+  Screening: "var(--chart-2)",
+  Interview: "var(--chart-3)",
+  Offer: "var(--chart-4)",
+  Hired: "var(--chart-5)",
+  Rejected: "var(--destructive)",
+};
+
 const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -133,6 +150,9 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 
 export default function DashboardPage() {
   const { timezone } = useTimezone();
+  const [selectedStatus, setSelectedStatus] = useState<"all" | CandidateStatus>(
+    "all",
+  );
   const briefcaseRef = useRef<AnimatedBriefcaseHandle>(null);
   const usersRef = useRef<AnimatedUsersCandidatesHandle>(null);
   const clockRef = useRef<AnimatedClockHandle>(null);
@@ -167,40 +187,47 @@ export default function DashboardPage() {
 
   const jobs = data?.jobs ?? [];
   const candidates = data?.candidates ?? [];
+  const filteredCandidates = useMemo(
+    () =>
+      selectedStatus === "all"
+        ? candidates
+        : candidates.filter((candidate) => candidate.status === selectedStatus),
+    [candidates, selectedStatus],
+  );
 
   const openJobsCount = jobs.filter((job) => job.status === "open").length;
-  const pendingReviewCount = candidates.filter(
+  const pendingReviewCount = filteredCandidates.filter(
     (candidate) => candidate.status === "applied",
   ).length;
-  const hiredCount = candidates.filter(
+  const hiredCount = filteredCandidates.filter(
     (candidate) => candidate.status === "hired",
   ).length;
   const conversionRate =
-    candidates.length > 0
-      ? Math.round((hiredCount / candidates.length) * 100)
+    filteredCandidates.length > 0
+      ? Math.round((hiredCount / filteredCandidates.length) * 100)
       : 0;
 
   const recentCandidates = useMemo(
     () =>
-      [...candidates]
+      [...filteredCandidates]
         .sort(
           (left, right) =>
             new Date(right.createdAt).getTime() -
             new Date(left.createdAt).getTime(),
         )
         .slice(0, 6),
-    [candidates],
+    [filteredCandidates],
   );
 
   const statusChartData = useMemo(
     () =>
       statusOptions.map((statusOption) => ({
         status: statusOption.label,
-        total: candidates.filter(
+        total: filteredCandidates.filter(
           (candidate) => candidate.status === statusOption.value,
         ).length,
       })),
-    [candidates],
+    [filteredCandidates],
   );
 
   const trendChartData = useMemo(() => {
@@ -227,7 +254,7 @@ export default function DashboardPage() {
       buckets.set(key, 0);
     }
 
-    candidates.forEach((candidate) => {
+    filteredCandidates.forEach((candidate) => {
       const created = new Date(candidate.createdAt);
       const key = getLocalDateKey(created, timezone || "UTC");
       if (buckets.has(key)) {
@@ -240,9 +267,9 @@ export default function DashboardPage() {
       label: shortDateFormatter.format(new Date(`${date}T00:00:00`)),
       applications,
     }));
-  }, [candidates, timezone]);
+  }, [filteredCandidates, timezone]);
 
-  const activePipelineCount = candidates.filter(
+  const activePipelineCount = filteredCandidates.filter(
     (candidate) =>
       candidate.status !== "hired" && candidate.status !== "rejected",
   ).length;
@@ -251,50 +278,26 @@ export default function DashboardPage() {
     {
       title: "Open Jobs",
       value: String(openJobsCount),
-      description: `${jobs.length} total jobs`,
+      meta: `${jobs.length} total jobs`,
       iconRef: briefcaseRef,
-      icon: (
-        <AnimatedBriefcase
-          ref={briefcaseRef}
-          className="size-4 text-muted-foreground"
-        />
-      ),
     },
     {
       title: "Total Candidates",
-      value: String(candidates.length),
-      description: "Total applications received",
+      value: String(filteredCandidates.length),
+      meta: "Total applications received",
       iconRef: usersRef,
-      icon: (
-        <AnimatedUsersCandidates
-          ref={usersRef}
-          className="size-4 text-muted-foreground"
-        />
-      ),
     },
     {
-      title: "Applied (Not Reviewed)",
+      title: "Applied Queue",
       value: String(pendingReviewCount),
-      description: "Candidates in applied stage",
+      meta: "Candidates in applied stage",
       iconRef: clockRef,
-      icon: (
-        <AnimatedClock
-          ref={clockRef}
-          className="size-4 text-muted-foreground"
-        />
-      ),
     },
     {
       title: "Conversion Rate",
       value: `${conversionRate}%`,
-      description: `${hiredCount} hired candidates`,
+      meta: `${hiredCount} hired candidates`,
       iconRef: chartRef,
-      icon: (
-        <AnimatedLineChart
-          ref={chartRef}
-          className="size-4 text-muted-foreground"
-        />
-      ),
     },
   ];
 
@@ -321,7 +324,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
+        {dashboardFilterOptions.map((statusOption) => (
+          <Button
+            key={statusOption.value}
+            variant={
+              selectedStatus === statusOption.value ? "default" : "outline"
+            }
+            size="sm"
+            onClick={() => setSelectedStatus(statusOption.value)}
+          >
+            {statusOption.label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {isLoading
           ? Array.from({ length: 4 }).map((_, index) => (
               <Card key={index}>
@@ -341,16 +359,39 @@ export default function DashboardPage() {
                 onMouseLeave={() => stat.iconRef?.current?.stopAnimation()}
               >
                 <CardHeader className="flex-row items-center justify-between">
-                  <CardDescription>{stat.title}</CardDescription>
-                  {stat.icon}
+                  <div className="flex items-center gap-3">
+                    {stat.title === "Open Jobs" && (
+                      <AnimatedBriefcase
+                        ref={briefcaseRef}
+                        className="size-6 text-muted-foreground shrink-0"
+                      />
+                    )}
+                    {stat.title === "Total Candidates" && (
+                      <AnimatedUsersCandidates
+                        ref={usersRef}
+                        className="size-6 text-muted-foreground shrink-0"
+                      />
+                    )}
+                    {stat.title === "Applied Queue" && (
+                      <AnimatedClock
+                        ref={clockRef}
+                        className="size-6 text-muted-foreground shrink-0"
+                      />
+                    )}
+                    {stat.title === "Conversion Rate" && (
+                      <AnimatedLineChart
+                        ref={chartRef}
+                        className="size-6 text-muted-foreground shrink-0"
+                      />
+                    )}
+                    <CardDescription className="text-sm font-medium">
+                      {stat.title}
+                    </CardDescription>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold tracking-tight">
-                    {stat.value}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {stat.description}
-                  </p>
+                  <div className="text-2xl font-semibold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground">{stat.meta}</p>
                 </CardContent>
               </Card>
             ))}
@@ -429,12 +470,22 @@ export default function DashboardPage() {
                     tickLine={false}
                     width={76}
                   />
-                  <XAxis type="number" hide />
+                  <XAxis type="number" />
                   <ChartTooltip
-                    cursor={false}
-                    content={<ChartTooltipContent hideLabel />}
+                    cursor={true}
+                    content={<ChartTooltipContent indicator="dashed" />}
                   />
-                  <Bar dataKey="total" fill="var(--color-total)" radius={6} />
+                  <Bar dataKey="total" radius={6}>
+                    {statusChartData.map((entry) => (
+                      <Cell
+                        key={`pipeline-cell-${entry.status}`}
+                        fill={
+                          pipelineStageColorMap[entry.status] ??
+                          "var(--color-total)"
+                        }
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ChartContainer>
             )}
@@ -462,10 +513,9 @@ export default function DashboardPage() {
                 <EmptyMedia variant="icon">
                   <AnimatedBriefcase />
                 </EmptyMedia>
-                <EmptyTitle>No activity yet</EmptyTitle>
+                <EmptyTitle>No candidates for this filter</EmptyTitle>
                 <EmptyDescription>
-                  Create your first job posting to start receiving and
-                  evaluating candidates.
+                  Try a different status or add new candidates to your pipeline.
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>

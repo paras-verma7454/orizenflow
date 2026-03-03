@@ -2,7 +2,7 @@ import type { Session } from "@packages/auth"
 
 import { BUILD_VERSION } from "@packages/env"
 import { env } from "@packages/env/api-hono"
-import { createCandidateEvaluationQueue } from "@packages/queue"
+import { createCandidateEvaluationBrowserQueue, createCandidateEvaluationFetchQueue } from "@packages/queue"
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
@@ -27,13 +27,16 @@ const appIdParamSchema = z.object({
   id: z.string().min(1),
 })
 
-const queue = (() => {
+const queues = (() => {
   if (!env.REDIS_URL) {
     console.warn("[admin] Redis not configured - candidate evaluation queue unavailable")
     return null
   }
   try {
-    return createCandidateEvaluationQueue(env.REDIS_URL)
+    return {
+      fetch: createCandidateEvaluationFetchQueue(env.REDIS_URL),
+      browser: createCandidateEvaluationBrowserQueue(env.REDIS_URL),
+    }
   } catch (error) {
     console.error("[admin] Failed to create candidate evaluation queue:", error)
     return null
@@ -41,7 +44,7 @@ const queue = (() => {
 })()
 
 const getQueueSnapshot = async () => {
-  if (!queue) {
+  if (!queues) {
     return {
       connected: false,
       counts: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, paused: 0 },
@@ -54,23 +57,32 @@ const getQueueSnapshot = async () => {
 
     return await (Promise.race([
       (async () => {
-        const counts = await queue.getJobCounts("waiting", "active", "completed", "failed", "delayed", "paused")
-        const [oldestWaitingJob] = await queue.getJobs(["waiting"], 0, 0, true)
-        const oldestWaitingAgeSeconds = oldestWaitingJob
-          ? Math.max(0, Math.floor((Date.now() - oldestWaitingJob.timestamp) / 1000))
-          : null
+        const snapshots = await Promise.all(
+          [queues.fetch, queues.browser].map(async (queue) => {
+            const counts = await queue.getJobCounts("waiting", "active", "completed", "failed", "delayed", "paused")
+            const [oldestWaitingJob] = await queue.getJobs(["waiting"], 0, 0, true)
+            const oldestWaitingAgeSeconds = oldestWaitingJob
+              ? Math.max(0, Math.floor((Date.now() - oldestWaitingJob.timestamp) / 1000))
+              : null
+            return { counts, oldestWaitingAgeSeconds }
+          }),
+        )
+
+        const waitingAges = snapshots
+          .map((snapshot) => snapshot.oldestWaitingAgeSeconds)
+          .filter((age): age is number => age !== null)
 
         return {
           connected: true,
           counts: {
-            waiting: counts.waiting ?? 0,
-            active: counts.active ?? 0,
-            completed: counts.completed ?? 0,
-            failed: counts.failed ?? 0,
-            delayed: counts.delayed ?? 0,
-            paused: counts.paused ?? 0,
+            waiting: snapshots.reduce((sum, snapshot) => sum + (snapshot.counts.waiting ?? 0), 0),
+            active: snapshots.reduce((sum, snapshot) => sum + (snapshot.counts.active ?? 0), 0),
+            completed: snapshots.reduce((sum, snapshot) => sum + (snapshot.counts.completed ?? 0), 0),
+            failed: snapshots.reduce((sum, snapshot) => sum + (snapshot.counts.failed ?? 0), 0),
+            delayed: snapshots.reduce((sum, snapshot) => sum + (snapshot.counts.delayed ?? 0), 0),
+            paused: snapshots.reduce((sum, snapshot) => sum + (snapshot.counts.paused ?? 0), 0),
           },
-          oldestWaitingAgeSeconds,
+          oldestWaitingAgeSeconds: waitingAges.length > 0 ? Math.max(...waitingAges) : null,
         }
       })(),
       timeout(1000),
@@ -732,8 +744,8 @@ export const adminRouter = new Hono<{ Variables: Session }>()
     }),
     async (c) => {
       let dbStatus: "ok" | "down" = "ok"
-      let redisStatus: "ok" | "down" | "not_configured" = queue ? "ok" : "not_configured"
-      let queueStatus: "ok" | "down" | "not_configured" = queue ? "ok" : "not_configured"
+      let redisStatus: "ok" | "down" | "not_configured" = queues ? "ok" : "not_configured"
+      let queueStatus: "ok" | "down" | "not_configured" = queues ? "ok" : "not_configured"
 
       try {
         await db.execute(sql`select 1`)
@@ -741,13 +753,13 @@ export const adminRouter = new Hono<{ Variables: Session }>()
         dbStatus = "down"
       }
 
-      if (queue) {
+      if (queues) {
         const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
 
         try {
           await Promise.race([
             (async () => {
-              const client = await queue.client
+              const client = await queues.fetch.client
               const pingResponse = await client.ping()
               if (pingResponse !== "PONG") redisStatus = "down"
             })(),
@@ -758,7 +770,7 @@ export const adminRouter = new Hono<{ Variables: Session }>()
         }
 
         try {
-          await Promise.race([queue.waitUntilReady(), timeout(1000)])
+          await Promise.race([queues.fetch.waitUntilReady(), timeout(1000)])
         } catch {
           queueStatus = "down"
         }

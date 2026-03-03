@@ -27,6 +27,9 @@ docker compose build ${BUILD_FLAGS} api
 echo "Building Web image..."
 docker compose build ${BUILD_FLAGS} web
 
+echo "Building Worker image..."
+docker compose build ${BUILD_FLAGS} worker-fetch
+
 # 3. Start services
 echo "Starting services..."
 docker compose up -d
@@ -53,7 +56,8 @@ echo ""
 echo "View logs:"
 echo "  docker compose logs -f api"
 echo "  docker compose logs -f web"
-echo "  docker compose logs -f worker"
+echo "  docker compose logs -f worker-fetch"
+echo "  docker compose logs -f worker-browser"
 echo ""
 echo "Rebuild without downtime:"
 echo "  docker compose build --no-cache && docker compose up -d --force-recreate"

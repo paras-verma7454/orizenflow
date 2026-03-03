@@ -131,25 +131,25 @@ export default function AdminOverviewPage() {
       label: "Total Users",
       value: data.totals.users,
       icon: RiUser3Line,
-      color: "text-blue-500",
+      description: `${data.totals.users} registered users`,
     },
     {
       label: "Organizations",
       value: data.totals.organizations,
       icon: RiOrganizationChart,
-      color: "text-purple-500",
+      description: `${data.totals.organizations} total organizations`,
     },
     {
       label: "Active Jobs",
       value: data.totals.jobs,
       icon: RiSuitcaseLine,
-      color: "text-orange-500",
+      description: `${data.totals.jobs} open positions`,
     },
     {
       label: "Applications",
       value: data.totals.applications,
       icon: RiFileTextLine,
-      color: "text-green-500",
+      description: `${data.totals.applications} total applications`,
     },
   ];
 
@@ -199,22 +199,24 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card
-            key={stat.label}
-            className="overflow-hidden border shadow-sm bg-card/70"
-          >
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
-              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {stat.label}
-              </CardTitle>
-              <stat.icon className={`h-4 w-4 ${stat.color}`} />
+          <Card key={stat.label} className="border border-border/50 bg-card">
+            <CardHeader className="flex-row items-center justify-between">
+              <div className="flex items-center gap-3">
+                <stat.icon className="size-6 text-muted-foreground shrink-0" />
+                <CardDescription className="text-sm font-medium">
+                  {stat.label}
+                </CardDescription>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold tracking-tight tabular-nums">
+              <div className="text-2xl font-semibold">
                 {stat.value.toLocaleString()}
               </div>
+              <p className="text-xs text-muted-foreground">
+                {stat.description}
+              </p>
             </CardContent>
           </Card>
         ))}

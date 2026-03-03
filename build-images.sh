@@ -23,7 +23,7 @@ fi
 
 # Build Web
 echo ""
-echo "[2/2] Building Web image..."
+echo "[2/3] Building Web image..."
 docker compose build ${BUILD_FLAGS} web
 if [ $? -eq 0 ]; then
     echo "✓ Web image built successfully"
@@ -32,12 +32,23 @@ else
     exit 1
 fi
 
-# Worker uses pre-built image, no build needed
+# Build Worker
+echo ""
+echo "[3/3] Building Worker image..."
+docker compose build ${BUILD_FLAGS} worker
+if [ $? -eq 0 ]; then
+    echo "✓ Worker image built successfully"
+else
+    echo "✗ Worker image build failed"
+    exit 1
+fi
+
 echo ""
 echo "=== Build Complete ==="
 echo "Images built:"
 echo "  - orizen-flow-api:latest"
 echo "  - orizen-flow-web:latest"
+echo "  - orizen-flow-worker:latest"
 echo ""
 echo "To start services:"
 echo "  docker compose up -d"

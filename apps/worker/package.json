@@ -18,8 +18,10 @@
     "@packages/db": "workspace:*",
     "@packages/env": "workspace:*",
     "@packages/queue": "workspace:*",
-    "cheerio": "catalog:",
+    "cheerio": "^1.2.0",
     "drizzle-orm": "catalog:",
+    "pdf-parse": "catalog:",
+    "playwright": "catalog:",
     "sarvamai": "catalog:",
     "turndown": "catalog:"
   },
@@ -27,6 +29,7 @@
     "@packages/tsconfig": "workspace:*",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/pdf-parse": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:"
   }

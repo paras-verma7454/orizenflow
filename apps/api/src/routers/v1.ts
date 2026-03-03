@@ -1,6 +1,6 @@
 import type { Session } from "@packages/auth"
 
-import { createCandidateEvaluationQueue } from "@packages/queue"
+import { createCandidateEvaluationBrowserQueue, createCandidateEvaluationFetchQueue } from "@packages/queue"
 import { env } from "@packages/env/api-hono"
 import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
@@ -142,18 +142,28 @@ const enqueueBulkReviewSchema = z.object({
   force: z.boolean().optional().default(false),
 })
 
-const candidateEvaluationQueue = (() => {
+const candidateEvaluationQueues = (() => {
   if (!env.REDIS_URL) {
     console.warn("[v1] Redis not configured - candidate evaluation queue unavailable")
     return null
   }
   try {
-    return createCandidateEvaluationQueue(env.REDIS_URL)
+    return {
+      fetch: createCandidateEvaluationFetchQueue(env.REDIS_URL),
+      browser: createCandidateEvaluationBrowserQueue(env.REDIS_URL),
+    }
   } catch (error) {
     console.error("[v1] Failed to create candidate evaluation queue:", error)
     return null
   }
 })()
+
+const selectEvaluationQueue = (portfolioUrl: string | null | undefined) => {
+  if (!candidateEvaluationQueues) return null
+  return portfolioUrl?.trim()
+    ? candidateEvaluationQueues.browser
+    : candidateEvaluationQueues.fetch
+}
 
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
 
@@ -883,6 +893,7 @@ const { data } = await response.json()`,
           id: jobApplications.id,
           jobId: jobApplications.jobId,
           organizationId: jobApplications.organizationId,
+          portfolioUrl: jobApplications.portfolioUrl,
         })
         .from(jobApplications)
         .where(and(eq(jobApplications.id, id), eq(jobApplications.organizationId, orgId)))
@@ -891,6 +902,7 @@ const { data } = await response.json()`,
         return c.json({ error: { code: "NOT_FOUND", message: "Candidate not found" } }, 404)
       }
 
+      const candidateEvaluationQueue = selectEvaluationQueue(application.portfolioUrl)
       if (!candidateEvaluationQueue) {
         console.error("[queue] Review queue unavailable - Redis not configured")
         return c.json(
@@ -999,6 +1011,7 @@ const { data } = await response.json()`,
           id: jobApplications.id,
           jobId: jobApplications.jobId,
           organizationId: jobApplications.organizationId,
+          portfolioUrl: jobApplications.portfolioUrl,
           existingEvalId: candidateEvaluations.id,
         })
         .from(jobApplications)
@@ -1009,21 +1022,38 @@ const { data } = await response.json()`,
         .offset(offset)
 
       const selected = force ? rows : rows.filter((row) => row.existingEvalId === null || row.existingEvalId === undefined)
-      const jobsToQueue = selected.map((row) => ({
-        name: "evaluate-candidate",
-        data: {
-          applicationId: row.id,
-          organizationId: row.organizationId,
-          jobId: row.jobId,
-          enqueuedAt: new Date().toISOString(),
-        },
-        opts: {
-          jobId: force ? `eval-${row.id}-${Date.now()}` : `eval-${row.id}`,
-        },
-      }))
+      const fetchJobsToQueue = selected
+        .filter((row) => !row.portfolioUrl)
+        .map((row) => ({
+          name: "evaluate-candidate",
+          data: {
+            applicationId: row.id,
+            organizationId: row.organizationId,
+            jobId: row.jobId,
+            enqueuedAt: new Date().toISOString(),
+          },
+          opts: {
+            jobId: force ? `eval-${row.id}-${Date.now()}` : `eval-${row.id}`,
+          },
+        }))
 
-      if (jobsToQueue.length > 0) {
-        if (!candidateEvaluationQueue) {
+      const browserJobsToQueue = selected
+        .filter((row) => Boolean(row.portfolioUrl))
+        .map((row) => ({
+          name: "evaluate-candidate",
+          data: {
+            applicationId: row.id,
+            organizationId: row.organizationId,
+            jobId: row.jobId,
+            enqueuedAt: new Date().toISOString(),
+          },
+          opts: {
+            jobId: force ? `eval-${row.id}-${Date.now()}` : `eval-${row.id}`,
+          },
+        }))
+
+      if (fetchJobsToQueue.length > 0 || browserJobsToQueue.length > 0) {
+        if (!candidateEvaluationQueues) {
           console.error("[queue] Bulk review queue unavailable - Redis not configured")
           return c.json(
             {
@@ -1037,7 +1067,12 @@ const { data } = await response.json()`,
         }
 
         try {
-          await candidateEvaluationQueue.addBulk(jobsToQueue)
+          if (fetchJobsToQueue.length > 0) {
+            await candidateEvaluationQueues.fetch.addBulk(fetchJobsToQueue)
+          }
+          if (browserJobsToQueue.length > 0) {
+            await candidateEvaluationQueues.browser.addBulk(browserJobsToQueue)
+          }
         } catch (error) {
           const reason = error instanceof Error ? error.message : "QUEUE_ERROR"
           console.error("[queue] enqueue bulk review failed:", reason, error)
@@ -1053,10 +1088,12 @@ const { data } = await response.json()`,
         }
       }
 
+      const queuedCount = fetchJobsToQueue.length + browserJobsToQueue.length
+
       return c.json({
         data: {
-          queued: jobsToQueue.length,
-          skipped: rows.length - jobsToQueue.length,
+          queued: queuedCount,
+          skipped: rows.length - queuedCount,
           totalSelected: rows.length,
           force,
         },

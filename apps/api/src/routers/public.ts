@@ -1,7 +1,7 @@
 import { findIp } from "@arcjet/ip"
 import { db, jobApplications, jobs, organization } from "@packages/db"
 import { env } from "@packages/env/api-hono"
-import { createCandidateEvaluationQueue } from "@packages/queue"
+import { createCandidateEvaluationBrowserQueue, createCandidateEvaluationFetchQueue } from "@packages/queue"
 import { and, desc, eq, ne } from "drizzle-orm"
 import { Hono } from "hono"
 import { validator } from "hono/validator"
@@ -245,18 +245,28 @@ const isValidResumeLink = (url: string) => {
     return extractDriveFileId(url) !== null || isDirectPdfLink(url)
 }
 
-const candidateEvaluationQueue = (() => {
+const candidateEvaluationQueues = (() => {
     if (!process.env.REDIS_URL) {
         console.warn("[public] Redis not configured - candidate evaluation queue unavailable")
         return null
     }
     try {
-        return createCandidateEvaluationQueue(process.env.REDIS_URL)
+        return {
+            fetch: createCandidateEvaluationFetchQueue(process.env.REDIS_URL),
+            browser: createCandidateEvaluationBrowserQueue(process.env.REDIS_URL),
+        }
     } catch (error) {
         console.error("[public] Failed to create candidate evaluation queue:", error)
         return null
     }
 })()
+
+const selectEvaluationQueue = (portfolioUrl: string | null | undefined) => {
+    if (!candidateEvaluationQueues) return null
+    return portfolioUrl?.trim()
+        ? candidateEvaluationQueues.browser
+        : candidateEvaluationQueues.fetch
+}
 
 export const publicRouter = new Hono()
     .get("/:orgSlug/jobs", async (c) => {
@@ -410,59 +420,6 @@ export const publicRouter = new Hono()
             },
         })
     })
-    .get("/:orgSlug/job/by-slug/:slug", async (c) => {
-        const orgSlug = c.req.param("orgSlug")
-        const slug = c.req.param("slug")
-
-        // Look up by slug for backward compatibility
-        const [data] = await db
-            .select({
-                id: jobs.id,
-                shortId: jobs.shortId,
-                title: jobs.title,
-                slug: jobs.slug,
-                description: jobs.description,
-                status: jobs.status,
-                jobType: jobs.jobType,
-                location: jobs.location,
-                salaryRange: jobs.salaryRange,
-                questionsJson: jobs.questionsJson,
-                createdAt: jobs.createdAt,
-                organization: {
-                    id: organization.id,
-                    name: organization.name,
-                    slug: organization.slug,
-                    logo: organization.logo,
-                    metadata: organization.metadata,
-                },
-            })
-            .from(jobs)
-            .innerJoin(organization, eq(jobs.organizationId, organization.id))
-            .where(and(eq(jobs.slug, slug), eq(organization.slug, orgSlug), ne(jobs.status, "draft")))
-
-        if (!data) {
-            return c.json({ error: { code: "NOT_FOUND", message: "Job not found" } }, 404)
-        }
-
-        const metadata = parseMetadata(data.organization.metadata)
-
-        return c.json({
-            data: {
-                ...data,
-                questions: parseJobQuestions(data.questionsJson),
-                organization: {
-                    id: data.organization.id,
-                    name: data.organization.name,
-                    slug: data.organization.slug,
-                    logo: data.organization.logo,
-                    tagline: typeof metadata.tagline === "string" ? metadata.tagline : null,
-                    about: typeof metadata.about === "string" ? metadata.about : null,
-                    websiteUrl: typeof metadata.websiteUrl === "string" ? metadata.websiteUrl : null,
-                    linkedinUrl: typeof metadata.linkedinUrl === "string" ? metadata.linkedinUrl : null,
-                },
-            },
-        })
-    })
     .post(
         "/:orgSlug/job/:shortId/apply",
         validator("json", (value, c) => {
@@ -576,6 +533,7 @@ export const publicRouter = new Hono()
                 return c.json({ error: { code: "DUPLICATE", message: "You have already applied for this job" } }, 409)
             }
 
+            const candidateEvaluationQueue = selectEvaluationQueue(payload.portfolioUrl)
             if (candidateEvaluationQueue) {
                 try {
                     await candidateEvaluationQueue.add("evaluate-candidate", {
@@ -760,6 +718,7 @@ export const publicRouter = new Hono()
                 return c.json({ error: { code: "DUPLICATE", message: "You have already applied for this job" } }, 409)
             }
 
+            const candidateEvaluationQueue = selectEvaluationQueue(payload.portfolioUrl)
             if (candidateEvaluationQueue) {
                 try {
                     await candidateEvaluationQueue.add("evaluate-candidate", {

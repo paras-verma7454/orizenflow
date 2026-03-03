@@ -20,7 +20,6 @@ Orizen Flow is a next-generation Applicant Tracking System (ATS) that combines e
 - [Getting Started](#-getting-started)
 - [Deployment](#-deployment)
 - [What's Implemented](#-whats-implemented)
-- [Roadmap](#-roadmap)
 - [API Documentation](#-api-documentation)
 - [Project Structure](#-project-structure)
 - [Testing](#-testing)
@@ -396,58 +395,7 @@ Configure environment variables in each platform's dashboard.
 - [x] Docker deployment configuration
 - [x] Kubernetes (k3s) deployment support
 
-## 🚧 Roadmap
-
-### v0.4 - Candidate Management
-
-- [ ] Candidate profile page
-- [ ] Resume upload and parsing
-- [ ] Resume preview component
-- [ ] Candidate timeline/activity log
-- [ ] Bulk candidate operations
-- [ ] Advanced candidate search and filtering
-- [ ] Duplicate candidate detection
-
-### v0.5 - AI Evaluation
-
-- [ ] Complete worker-based evaluation pipeline
-- [ ] Resume text extraction and normalization
-- [ ] Skill extraction and categorization
-- [ ] Job description analysis
-- [ ] Candidate-job matching score
-- [ ] Evidence-based scoring system
-- [ ] AI-generated candidate summaries
-
-### v0.6 - Pipeline Management
-
-- [ ] Visual kanban board (Applied → Screening → Interview → Hired)
-- [ ] Drag-and-drop pipeline stages
-- [ ] Stage automation rules
-- [ ] Rejection email templates
-- [ ] Interview scheduling
-- [ ] Collaborative hiring (notes, ratings)
-
-### v1.0 - Production Ready
-
-- [ ] Role-adaptive scoring (weighing skills by job requirements)
-- [ ] Multi-language support (Hindi, English using Sarvam AI)
-- [ ] Advanced analytics and reporting
-- [ ] Candidate comparison tool
-- [ ] Export candidate data
-- [ ] Audit logs
-- [ ] Mobile app (React Native)
-
-### v2.0 - Enterprise Features
-
-- [ ] Multi-region support
-- [ ] Custom workflow builder
-- [ ] Interview kit generation
-- [ ] Video interview integration
-- [ ] Background check integrations
-- [ ] Offer letter management
-- [ ] GDPR compliance tools
-
-## 📖 API Documentation
+## API Documentation
 
 ### Authentication
 

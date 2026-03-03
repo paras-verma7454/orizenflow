@@ -1,6 +1,6 @@
 import { getSafeEnv } from "@packages/env"
 import { env } from "@packages/env/worker"
-import { createCandidateEvaluationWorker } from "@packages/queue"
+import { createCandidateEvaluationBrowserWorker, createCandidateEvaluationFetchWorker } from "@packages/queue"
 import { evaluateCandidateJob } from "@/lib/evaluate-candidate"
 
 getSafeEnv(env, "@worker/bullmq")
@@ -13,10 +13,14 @@ if (!env.REDIS_URL) {
 const llmRateLimitPerMinute = Number(process.env.LLM_RATE_LIMIT_PER_MINUTE ?? "30")
 const llmMaxRetries = Number(process.env.LLM_MAX_RETRIES ?? "2")
 
-let worker: ReturnType<typeof createCandidateEvaluationWorker>
+let worker: ReturnType<typeof createCandidateEvaluationFetchWorker>
+
+const createWorkerForType = env.WORKER_TYPE === "browser"
+  ? createCandidateEvaluationBrowserWorker
+  : createCandidateEvaluationFetchWorker
 
 try {
-  worker = createCandidateEvaluationWorker(
+  worker = createWorkerForType(
     env.REDIS_URL,
     async (job) => {
       console.info(
@@ -38,6 +42,8 @@ try {
     },
     {
       concurrency: env.WORKER_CONCURRENCY,
+      lockDuration: 300_000,
+      lockRenewTime: 30_000,
       limiter: {
         max: llmRateLimitPerMinute,
         duration: 60_000,
@@ -45,12 +51,12 @@ try {
     },
   )
 } catch (error) {
-  console.error("[worker] Failed to create candidate evaluation worker:", error)
+  console.error(`[worker] Failed to create ${env.WORKER_TYPE} candidate evaluation worker:`, error)
   process.exit(1)
 }
 
 worker.on("ready", () => {
-  console.info("[worker] candidate-evaluation worker ready")
+  console.info(`[worker] candidate-evaluation ${env.WORKER_TYPE} worker ready`)
 })
 
 worker.on("completed", (job) => {

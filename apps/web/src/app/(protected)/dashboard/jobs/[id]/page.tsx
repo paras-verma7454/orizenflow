@@ -345,7 +345,25 @@ export default function JobDetailPage() {
               </DialogHeader>
 
               {organizationProfile?.slug ? (
-                <div className="grid gap-4 md:grid-cols-2 md:items-start">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-medium">Code Snippet</h3>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="cursor-pointer"
+                        onClick={handleCopyEmbedCode}
+                      >
+                        <RiFileCopyLine />
+                        Copy Code
+                      </Button>
+                    </div>
+                    <pre className="max-h-96 overflow-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
+                      <code>{embedSnippet}</code>
+                    </pre>
+                  </div>
+
                   <div className="space-y-2">
                     <h3 className="text-sm font-medium">Form Preview</h3>
 
@@ -392,24 +410,6 @@ export default function JobDetailPage() {
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-medium">Code Snippet</h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="cursor-pointer"
-                        onClick={handleCopyEmbedCode}
-                      >
-                        <RiFileCopyLine />
-                        Copy Code
-                      </Button>
-                    </div>
-                    <pre className="max-h-96 overflow-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
-                      <code>{embedSnippet}</code>
-                    </pre>
                   </div>
                 </div>
               ) : (

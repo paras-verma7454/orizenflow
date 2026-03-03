@@ -9,6 +9,7 @@ import {
   RiMailLine,
   RiRobot2Line,
   RiTimeLine,
+  RiRefreshLine,
 } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -74,6 +75,7 @@ type CandidateEvaluation = {
   id: string;
   model: string;
   score: number | null;
+  skillsJson?: string | null;
   summary: string | null;
   strengthsJson: string | null;
   weaknessesJson: string | null;
@@ -322,6 +324,122 @@ function parseEvaluationBreakdown(raw: string | null) {
   }
 }
 
+function parseCandidateSkills(evaluation: CandidateEvaluation | null) {
+  if (!evaluation) return [] as string[];
+
+  const normalizeSkills = (skills: string[]) => [
+    ...new Set(skills.map((item) => item.trim()).filter(Boolean)),
+  ];
+
+  const fromSkillsJson = parseStringArray(evaluation.skillsJson ?? null);
+  if (fromSkillsJson.length > 0) {
+    return normalizeSkills(fromSkillsJson);
+  }
+
+  const fromAiSkills = (() => {
+    if (!evaluation.aiResponseJson) return [] as string[];
+    try {
+      const parsed = JSON.parse(evaluation.aiResponseJson) as {
+        skills?: unknown;
+      };
+      if (!Array.isArray(parsed.skills)) return [] as string[];
+      return parsed.skills.filter(
+        (item): item is string => typeof item === "string",
+      );
+    } catch {
+      return [] as string[];
+    }
+  })();
+  if (fromAiSkills.length > 0) {
+    return normalizeSkills(fromAiSkills);
+  }
+
+  const textBlob = [
+    evaluation.summary ?? "",
+    ...parseStringArray(evaluation.strengthsJson ?? null),
+    ...parseStringArray(evaluation.weaknessesJson ?? null),
+    evaluation.aiResponseJson ?? "",
+    evaluation.evidenceJson ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const inferred: string[] = [];
+  const patternToSkill: Array<[RegExp, string]> = [
+    [/\btypescript\b|\bts\b/, "TypeScript"],
+    [/\bjavascript\b|\bjs\b/, "JavaScript"],
+    [/\breact\b|\bnext\.?js\b|\bfrontend framework\b/, "React"],
+    [/\bnode\.?js\b|\bexpress\b|\bbackend\b/, "Node.js"],
+    [/\bpostgres\b|\bpostgresql\b/, "PostgreSQL"],
+    [/\bmysql\b/, "MySQL"],
+    [/\bmongodb\b/, "MongoDB"],
+    [/\bredis\b/, "Redis"],
+    [/\bdocker\b/, "Docker"],
+    [/\bkubernetes\b|\bk8s\b/, "Kubernetes"],
+    [/\baws\b/, "AWS"],
+    [/\bgcp\b/, "GCP"],
+    [/\bazure\b/, "Azure"],
+    [/\bfigma\b/, "Figma"],
+    [/\bjira\b/, "Jira"],
+    [/\bnotion\b/, "Notion"],
+    [/\bsalesforce\b/, "Salesforce"],
+    [/\bhubspot\b/, "HubSpot"],
+    [/\bgoogle analytics\b|\bga4\b/, "Google Analytics"],
+    [/\bmeta ads\b|\bfacebook ads\b/, "Meta Ads"],
+    [/\bgoogle ads\b/, "Google Ads"],
+    [/\bseo\b/, "SEO"],
+    [/\bpower ?bi\b/, "Power BI"],
+    [/\btableau\b/, "Tableau"],
+  ];
+
+  for (const [pattern, label] of patternToSkill) {
+    if (pattern.test(textBlob)) inferred.push(label);
+  }
+
+  return normalizeSkills(inferred);
+}
+
+function parseEvidenceReliability(raw: string | null) {
+  if (!raw)
+    return {
+      score: null as number | null,
+      tier: null as string | null,
+      reason: null as string | null,
+    };
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      evaluationMeta?: {
+        evidenceIntegrityScore?: unknown;
+        evidenceIntegrityTier?: unknown;
+      };
+      failures?: Array<{ reason?: unknown }>;
+    };
+
+    const scoreRaw = parsed.evaluationMeta?.evidenceIntegrityScore;
+    const score =
+      typeof scoreRaw === "number"
+        ? Math.max(0, Math.min(100, scoreRaw))
+        : null;
+    const tierRaw = parsed.evaluationMeta?.evidenceIntegrityTier;
+    const tier = typeof tierRaw === "string" ? tierRaw : null;
+    const reason =
+      parsed.failures && parsed.failures.length > 0
+        ? typeof parsed.failures[0]?.reason === "string"
+          ? parsed.failures[0].reason
+          : null
+        : null;
+
+    return { score, tier, reason };
+  } catch {
+    return {
+      score: null as number | null,
+      tier: null as string | null,
+      reason: null as string | null,
+    };
+  }
+}
+
 export default function CandidateProfilePage() {
   const params = useParams<{ id: string }>();
   const queryClient = useQueryClient();
@@ -402,6 +520,26 @@ export default function CandidateProfilePage() {
     },
   });
 
+  const reviewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.v1.candidates[":id"].review.$post({
+        param: { id: params.id },
+        json: { force: true },
+      });
+      if (!res.ok) throw new Error("Failed to queue review");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["candidate-evaluation", params.id],
+      });
+      toast.success("Re-review queued successfully");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const activeStatus = candidate
     ? (optimisticStatus ?? candidate.status)
     : "applied";
@@ -421,6 +559,14 @@ export default function CandidateProfilePage() {
   const evaluationMeta = parseEvaluationBreakdown(
     evaluation?.aiResponseJson ?? null,
   );
+  const evidenceReliability = parseEvidenceReliability(
+    evaluation?.evidenceJson ?? null,
+  );
+  const techStacks = parseCandidateSkills(evaluation ?? null).slice(0, 12);
+  const overallScore =
+    evaluation?.score !== null && evaluation?.score !== undefined
+      ? Math.max(0, Math.min(100, Math.round(evaluation.score)))
+      : null;
   const isLoading = isCandidateLoading || isEvaluationLoading;
 
   useEffect(() => {
@@ -605,6 +751,31 @@ export default function CandidateProfilePage() {
                   </p>
                 ) : (
                   <div className="space-y-5">
+                    {evidenceReliability.score !== null ? (
+                      <div className="rounded-lg border-2 border-slate-300/80 bg-muted/30 p-3 dark:border-slate-700/80">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-foreground">
+                            Evidence Reliability
+                          </p>
+                          <Badge variant="outline">
+                            {evidenceReliability.score}%
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {evidenceReliability.tier === "high"
+                            ? "High confidence in source evidence."
+                            : evidenceReliability.tier === "medium"
+                              ? "Moderate evidence quality; review details before final decision."
+                              : "Limited evidence quality; treat score as less reliable."}
+                        </p>
+                        {evidenceReliability.reason ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Primary limitation: {evidenceReliability.reason}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <p className="text-xs text-muted-foreground">
@@ -637,6 +808,42 @@ export default function CandidateProfilePage() {
                         {evaluation.summary ?? "-"}
                       </p>
                     </div>
+
+                    {overallScore !== null ? (
+                      <div className="pt-1">
+                        <div className="rounded-lg border-2 border-blue-200/80 bg-blue-50/70 p-3 dark:border-blue-900/60 dark:bg-blue-950/20">
+                          <div className="mb-2 flex items-start justify-between gap-2">
+                            <p className="text-xs font-semibold text-foreground">
+                              Overall Score
+                            </p>
+                            <p className="text-2xl leading-none font-semibold text-blue-700 dark:text-blue-300">
+                              {overallScore}%
+                            </p>
+                          </div>
+                          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800 ring-1 ring-slate-300/80 dark:ring-slate-700/80">
+                            <div
+                              className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${overallScore}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {techStacks.length > 0 ? (
+                      <div className="pt-1">
+                        <p className="text-xs font-semibold text-foreground">
+                          Skills / Tech Stack
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {techStacks.map((skill) => (
+                            <Badge key={skill} variant="secondary">
+                              {skill}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {evaluationMeta.breakdown.length > 0 ? (
                       <div className="pt-1">
@@ -674,7 +881,7 @@ export default function CandidateProfilePage() {
                                 </div>
                                 <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
                                   <div
-                                    className="bg-foreground/70 h-full rounded-full"
+                                    className="bg-blue-600 h-full rounded-full"
                                     style={{ width: `${percent}%` }}
                                   />
                                 </div>
@@ -792,6 +999,22 @@ export default function CandidateProfilePage() {
                   <span className="text-sm">Portfolio</span>
                 </a>
               ) : null}
+              
+                <button
+                  onClick={() => reviewMutation.mutate()}
+                  disabled={reviewMutation.isPending}
+                  className="hover:bg-muted flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 transition-colors dark:border-slate-700/80 disabled:opacity-50 disabled:cursor-not-allowed w-full text-left"
+                >
+                  <RiRefreshLine
+                    className={`size-4 text-muted-foreground ${reviewMutation.isPending ? "animate-spin" : ""}`}
+                  />
+                  <span className="text-sm">
+                    {reviewMutation.isPending
+                      ? "Re-reviewing..."
+                      : "Re-Review Candidate"}
+                  </span>
+                </button>
+              
             </CardContent>
           </Card>
         </div>

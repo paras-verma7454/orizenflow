@@ -56,6 +56,7 @@ docker compose build
 # Import to k3s
 docker save orizen-flow-api:latest | sudo k3s ctr images import -
 docker save orizen-flow-web:latest | sudo k3s ctr images import -
+docker save orizen-flow-worker:latest | sudo k3s ctr images import -
 
 # Install kompose
 curl -L https://github.com/kubernetes/kompose/releases/download/v1.31.2/kompose-linux-amd64 -o kompose

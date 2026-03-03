@@ -1,6 +1,8 @@
 import { Queue, Worker, type ConnectionOptions, type Processor, type WorkerOptions } from "bullmq"
 
 export const CANDIDATE_EVALUATION_QUEUE_NAME = "candidate-evaluation"
+export const CANDIDATE_EVALUATION_FETCH_QUEUE_NAME = "candidate-evaluation-fetch"
+export const CANDIDATE_EVALUATION_BROWSER_QUEUE_NAME = "candidate-evaluation-browser"
 
 export type CandidateEvaluationJobData = {
   applicationId: string
@@ -39,6 +41,36 @@ export const createCandidateEvaluationQueue = (redisUrl: string) => {
   })
 }
 
+export const createCandidateEvaluationFetchQueue = (redisUrl: string) => {
+  return new Queue<CandidateEvaluationJobData>(CANDIDATE_EVALUATION_FETCH_QUEUE_NAME, {
+    connection: toConnectionOptions(redisUrl),
+    defaultJobOptions: {
+      removeOnComplete: 1000,
+      removeOnFail: 1000,
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5_000,
+      },
+    },
+  })
+}
+
+export const createCandidateEvaluationBrowserQueue = (redisUrl: string) => {
+  return new Queue<CandidateEvaluationJobData>(CANDIDATE_EVALUATION_BROWSER_QUEUE_NAME, {
+    connection: toConnectionOptions(redisUrl),
+    defaultJobOptions: {
+      removeOnComplete: 1000,
+      removeOnFail: 1000,
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5_000,
+      },
+    },
+  })
+}
+
 export const createCandidateEvaluationWorker = (
   redisUrl: string,
   processor: Processor<CandidateEvaluationJobData>,
@@ -46,6 +78,36 @@ export const createCandidateEvaluationWorker = (
 ) => {
   return new Worker<CandidateEvaluationJobData>(
     CANDIDATE_EVALUATION_QUEUE_NAME,
+    processor,
+    {
+      connection: toConnectionOptions(redisUrl),
+      ...options,
+    },
+  )
+}
+
+export const createCandidateEvaluationFetchWorker = (
+  redisUrl: string,
+  processor: Processor<CandidateEvaluationJobData>,
+  options?: Omit<WorkerOptions, "connection">,
+) => {
+  return new Worker<CandidateEvaluationJobData>(
+    CANDIDATE_EVALUATION_FETCH_QUEUE_NAME,
+    processor,
+    {
+      connection: toConnectionOptions(redisUrl),
+      ...options,
+    },
+  )
+}
+
+export const createCandidateEvaluationBrowserWorker = (
+  redisUrl: string,
+  processor: Processor<CandidateEvaluationJobData>,
+  options?: Omit<WorkerOptions, "connection">,
+) => {
+  return new Worker<CandidateEvaluationJobData>(
+    CANDIDATE_EVALUATION_BROWSER_QUEUE_NAME,
     processor,
     {
       connection: toConnectionOptions(redisUrl),

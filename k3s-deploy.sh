@@ -21,11 +21,14 @@ docker compose build --no-cache api
 echo "Building Web image..."
 docker compose build --no-cache web
 
+echo "Building Worker image..."
+docker compose build --no-cache worker
+
 # 4. Import images to k3s
 echo "Importing images to k3s..."
 docker save orizen-flow-api:latest | sudo k3s ctr images import -
 docker save orizen-flow-web:latest | sudo k3s ctr images import -
-docker save oven/bun:1 | sudo k3s ctr images import -
+docker save orizen-flow-worker:latest | sudo k3s ctr images import -
 
 # 5. Create namespace
 echo "Creating namespace..."

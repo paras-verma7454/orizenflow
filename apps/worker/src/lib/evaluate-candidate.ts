@@ -1,7 +1,8 @@
 import { candidateEvaluations, db, jobApplications, jobs } from "@packages/db"
 import { and, eq } from "drizzle-orm"
 import { SarvamAIClient } from "sarvamai"
-import { convertHtmlToMarkdown, extractLinksByType, resolveUrl } from "./html-to-markdown"
+import { extractLinksByType, htmlToMarkdownWithCleanup, filterMarkdownForSignal } from "./html-to-markdown"
+import { smartScrape } from "./smart-scraper"
 
 type CandidateJobPayload = {
   applicationId: string
@@ -25,6 +26,16 @@ type EvidenceFailure = {
   reason: string
   transient: boolean
 }
+
+type GithubFetchStatus = "none" | "success" | "403" | "rate_limited" | "network_error" | "failed"
+type ResumeIngestionStatus =
+  | "PDF_PARSED"
+  | "TEXT_PARSED"
+  | "HTML_VIEWER_BLOCKED"
+  | "TOO_LARGE"
+  | "FETCH_FAILED"
+  | "UNSUPPORTED_CONTENT_TYPE"
+  | "PDF_PARSE_FAILED"
 
 type EnrichmentResult = {
   github: {
@@ -53,6 +64,13 @@ type EnrichmentResult = {
   usedUrls: EvidenceUrl[]
   extractedResumeLinks: string[]
   resumeTextExcerpt: string | null
+  githubFetchStatus: GithubFetchStatus
+  githubUrlProvided: boolean
+  githubEnriched: boolean
+  portfolioContentPages: number
+  resumeIngestionStatus: ResumeIngestionStatus
+  resumeContentType: string | null
+  resumeSizeBytes: number | null
 }
 
 type GithubProfile = {
@@ -90,17 +108,112 @@ type ParsedEvaluation = {
   recommendation: string | null
 }
 
+type SkillEvidence = {
+  resume: string[]
+  github: string[]
+  portfolio: string[]
+}
+
+type SkillOverlap = {
+  jobKeywords: string[]
+  candidateSkills: string[]
+  matched: string[]
+  missing: string[]
+  ratio: number
+}
+
+type ResumeStructureMetrics = {
+  bulletCount: number
+  metricCount: number
+  hasExperienceSections: boolean
+}
+
 const TRACKING_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"]
-const MAX_FETCH_BYTES = 2_000_000
+const MAX_RESUME_BYTES = 10_000_000
 const GITHUB_MAX_REPOS = 5
 const PORTFOLIO_MAX_PAGES = 6
 const REQUEST_TIMEOUT_MS = 5000
 const MAX_PROMPT_CHARS = 12_000
-const SARVAM_MAX_CONTEXT_TOKENS = 8192
-const SARVAM_MAX_OUTPUT_TOKENS = 700
-const SARVAM_THINKING_TEMPERATURE = 0.5
-const SARVAM_TOP_P = 1
+const SARVAM_MAX_OUTPUT_TOKENS = 900
 const RUBRIC_VERSION = "v2-role-adaptive-2026-02"
+const TECH_REGEX = /\b(react|reactjs|next\.?js|node\.?js|express|typescript|javascript|python|java|c\+\+|go|rust|ruby|php|swift|kotlin|bun|elysia|hono|drizzle|prisma|supabase|postgres(?:ql)?|mysql|mongodb|redis|elasticsearch|cassandra|docker|kubernetes|k8s|aws|gcp|azure|vercel|netlify|heroku|render|railway|tailwind(?:css)?|bootstrap|material-ui|chakra|websockets?|socket\.?io|oauth|jwt|assemblyai|openai|anthropic|gemini|graphql|rest|trpc|grpc|zod|yup|joi|vite|webpack|rollup|turbo(?:repo)?|nx|lerna|ci\/cd|jenkins|github\s*actions|gitlab|vue|angular|svelte|solid|astro|remix|django|flask|fastapi|spring|laravel|rails|figma|sketch|adobe\s*xd|photoshop|illustrator|blender|unity|unreal|godot|git|github|gitlab|bitbucket|jira|confluence|notion|slack|linear|asana|trello|salesforce|hubspot|marketo|segment|mixpanel|amplitude|datadog|sentry|newrelic|prometheus|grafana|kibana|tableau|powerbi|looker|snowflake|databricks|airflow|spark|hadoop|kafka|rabbitmq|celery)\b/gi
+const TECH_STOPWORDS = new Set([
+  "The",
+  "This",
+  "That",
+  "With",
+  "From",
+  "Using",
+  "Built",
+  "Project",
+  "Projects",
+  "Full",
+  "Stack",
+  "Developer",
+  "Engineer",
+  "Engineering",
+  "Application",
+  "Role",
+  "Candidate",
+  "Summary",
+  "Skills",
+  "Education",
+  "Experience",
+  "Work",
+  "About",
+  "Contact",
+  "Languages",
+  "Frontend",
+  "Backend",
+  "Database",
+  "DevOps",
+  "Tools",
+  "Others",
+  "Link",
+  "Live",
+  "Source",
+  "Code",
+  "Demo",
+  "GitHub",
+  "Portfolio",
+  "Repository",
+  "Date",
+  "Graduation",
+  "Tech",
+  "Computer",
+  "Science",
+  "India",
+  "Created",
+  "Developed",
+  "Designed",
+  "Implemented",
+  "Integrated",
+  "License",
+  "Getting",
+  "Started",
+  "How",
+  "Enter",
+  "Upload",
+  "Ask",
+  "You",
+  "Our",
+  "First",
+  "Generating",
+  "Open",
+  "Modern",
+  "Powered",
+  "System",
+  "Tracking",
+  "Evaluation",
+  "Flow",
+  "Questions",
+  "Applicant",
+  "Audio",
+  "Engine",
+  "Logos",
+  "Artwork",
+  "Chat",
+])
 const ROLE_FAMILY_PRECEDENCE: Array<Exclude<RoleFamily, "general">> = [
   "engineering",
   "product",
@@ -245,9 +358,10 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const isPrivateHost = (hostname: string) => {
   const host = hostname.toLowerCase()
   if (host === "localhost" || host.endsWith(".local")) return true
+  if (host.endsWith(".internal")) return true
   if (host === "127.0.0.1" || host === "::1") return true
-  if (/^10\./.test(host)) return true
-  if (/^192\.168\./.test(host)) return true
+  if (host.startsWith("10.")) return true
+  if (host.startsWith("192.168.")) return true
   if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true
   return false
 }
@@ -269,7 +383,7 @@ const normalizeUrl = (raw: string) => {
     if (!["http:", "https:"].includes(parsed.protocol)) return null
     if (isPrivateHost(parsed.hostname)) return null
     parsed.hash = ""
-    for (const key of [...parsed.searchParams.keys()]) {
+    for (const key of parsed.searchParams.keys()) {
       if (TRACKING_PARAMS.includes(key.toLowerCase()) || key.toLowerCase().startsWith("utm_")) {
         parsed.searchParams.delete(key)
       }
@@ -282,9 +396,38 @@ const normalizeUrl = (raw: string) => {
   }
 }
 
-const extractUrls = (text: string) => {
-  const matches = text.match(/https?:\/\/[^\s<>"')\]]+/gi) ?? []
-  return [...new Set(matches)]
+const extractDriveFileId = (rawUrl: string) => {
+  try {
+    const url = new URL(rawUrl)
+    const host = url.hostname.toLowerCase()
+    if (!["drive.google.com", "docs.google.com", "drive.usercontent.google.com"].includes(host)) return null
+
+    const parts = url.pathname.split("/").filter(Boolean)
+    const fileIndex = parts.findIndex((part) => part === "d")
+    if (fileIndex >= 0 && parts[fileIndex + 1]) return parts[fileIndex + 1]
+
+    const ucIndex = parts.findIndex((part) => part === "uc")
+    if (ucIndex >= 0) {
+      const queryId = url.searchParams.get("id")
+      if (queryId) return queryId
+    }
+
+    const queryId = url.searchParams.get("id")
+    if (queryId) return queryId
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+const toCanonicalResumeUrl = (rawUrl: string) => {
+  const fileId = extractDriveFileId(rawUrl)
+  if (!fileId) return { url: rawUrl, driveFileId: null as string | null }
+  return {
+    url: `https://drive.usercontent.google.com/uc?id=${fileId}&export=download`,
+    driveFileId: fileId,
+  }
 }
 
 const fetchWithTimeout = async (url: string, init?: RequestInit) => {
@@ -297,47 +440,150 @@ const fetchWithTimeout = async (url: string, init?: RequestInit) => {
   }
 }
 
-const fetchLimitedText = async (url: string) => {
-  const res = await fetchWithTimeout(url, { redirect: "follow" })
-  if (!res.ok || !res.body) throw new Error(`HTTP_${res.status}`)
-  const reader = res.body.getReader()
-  let received = 0
-  const chunks: Uint8Array[] = []
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    if (!value) continue
-    received += value.byteLength
-    if (received > MAX_FETCH_BYTES) break
-    chunks.push(value)
+const parsePdfText = async (bytes: Uint8Array) => {
+  const pdfParseModule = await import("pdf-parse")
+  const pdfParse = pdfParseModule.default
+  const parsed = await pdfParse(Buffer.from(bytes))
+  const text = typeof parsed?.text === "string" ? parsed.text : ""
+  return text.replace(/\s+/g, " ").trim()
+}
+
+const ingestResumeText = async (resumeUrl: string) => {
+  const canonical = toCanonicalResumeUrl(resumeUrl)
+
+  try {
+    const res = await fetchWithTimeout(canonical.url, { redirect: "follow" })
+    if (!res.ok || !res.body) {
+      return {
+        text: null,
+        status: "FETCH_FAILED" as ResumeIngestionStatus,
+        contentType: null,
+        sizeBytes: null,
+        canonicalUrl: canonical.url,
+      }
+    }
+
+    const contentType = (res.headers.get("content-type") ?? "").toLowerCase()
+    const contentLength = Number(res.headers.get("content-length") ?? 0)
+    if (Number.isFinite(contentLength) && contentLength > MAX_RESUME_BYTES) {
+      return {
+        text: null,
+        status: "TOO_LARGE" as ResumeIngestionStatus,
+        contentType,
+        sizeBytes: contentLength,
+        canonicalUrl: canonical.url,
+      }
+    }
+
+    const reader = res.body.getReader()
+    let received = 0
+    const chunks: Uint8Array[] = []
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (!value) continue
+      received += value.byteLength
+      if (received > MAX_RESUME_BYTES) {
+        return {
+          text: null,
+          status: "TOO_LARGE" as ResumeIngestionStatus,
+          contentType,
+          sizeBytes: received,
+          canonicalUrl: canonical.url,
+        }
+      }
+      chunks.push(value)
+    }
+
+    const merged = new Uint8Array(received)
+    let offset = 0
+    for (const chunk of chunks) {
+      const size = Math.min(chunk.length, merged.length - offset)
+      merged.set(chunk.slice(0, size), offset)
+      offset += size
+    }
+
+    if (contentType.includes("text/html")) {
+      return {
+        text: null,
+        status: "HTML_VIEWER_BLOCKED" as ResumeIngestionStatus,
+        contentType,
+        sizeBytes: received,
+        canonicalUrl: canonical.url,
+      }
+    }
+
+    const shouldParsePdf =
+      contentType.includes("application/pdf")
+      || contentType.includes("application/octet-stream")
+      || canonical.driveFileId !== null
+
+    if (shouldParsePdf) {
+      try {
+        const pdfText = await parsePdfText(merged)
+        if (!pdfText) {
+          return {
+            text: null,
+            status: "PDF_PARSE_FAILED" as ResumeIngestionStatus,
+            contentType,
+            sizeBytes: received,
+            canonicalUrl: canonical.url,
+          }
+        }
+        return {
+          text: pdfText.slice(0, 12000),
+          status: "PDF_PARSED" as ResumeIngestionStatus,
+          contentType,
+          sizeBytes: received,
+          canonicalUrl: canonical.url,
+        }
+      } catch {
+        return {
+          text: null,
+          status: "PDF_PARSE_FAILED" as ResumeIngestionStatus,
+          contentType,
+          sizeBytes: received,
+          canonicalUrl: canonical.url,
+        }
+      }
+    }
+
+    if (contentType.includes("text/plain")) {
+      const text = Buffer.from(merged).toString("utf8").replace(/\s+/g, " ").trim()
+      return {
+        text: text.slice(0, 12000),
+        status: "TEXT_PARSED" as ResumeIngestionStatus,
+        contentType,
+        sizeBytes: received,
+        canonicalUrl: canonical.url,
+      }
+    }
+
+    return {
+      text: null,
+      status: "UNSUPPORTED_CONTENT_TYPE" as ResumeIngestionStatus,
+      contentType,
+      sizeBytes: received,
+      canonicalUrl: canonical.url,
+    }
+  } catch {
+    return {
+      text: null,
+      status: "FETCH_FAILED" as ResumeIngestionStatus,
+      contentType: null,
+      sizeBytes: null,
+      canonicalUrl: canonical.url,
+    }
   }
-  const merged = new Uint8Array(received > MAX_FETCH_BYTES ? MAX_FETCH_BYTES : received)
-  let offset = 0
-  for (const chunk of chunks) {
-    if (offset >= merged.length) break
-    const size = Math.min(chunk.length, merged.length - offset)
-    merged.set(chunk.slice(0, size), offset)
-    offset += size
-  }
-  return Buffer.from(merged).toString("utf8")
 }
 
 const retryOnce = async <T>(fn: () => Promise<T>) => {
   try {
     return await fn()
-  } catch (error) {
+  } catch {
     await delay(500)
     return await fn()
   }
-}
-
-const stripHtml = (html: string) => {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
 }
 
 const extractAllLinks = (html: string, baseUrl: string): string[] => {
@@ -430,7 +676,7 @@ const scrapeGithub = async (url: string, token?: string) => {
 const scrapePortfolio = async (rootUrl: string) => {
   const visited = new Set<string>()
   const queue = [rootUrl]
-  const pages: Array<{ url: string; title?: string; textSnippet: string }> = []
+  const pages: Array<{ url: string; title?: string; textSnippet: string; method?: string }> = []
   const rootHost = new URL(rootUrl).hostname
 
   while (queue.length > 0 && pages.length < PORTFOLIO_MAX_PAGES) {
@@ -438,30 +684,56 @@ const scrapePortfolio = async (rootUrl: string) => {
     if (!next || visited.has(next)) continue
     visited.add(next)
 
-    const html = await fetchLimitedText(next)
-    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
-    // Convert HTML to markdown for better LLM context
-    const markdown = convertHtmlToMarkdown(html)
-    const textSnippet = markdown.slice(0, 1200)
+    // Use smart scraper with SPA detection and Playwright fallback
+    const scraped = await smartScrape(next)
+    if (!scraped.content) {
+      console.warn("[scrapePortfolio] Failed to scrape:", next)
+      continue
+    }
+
+    let textSnippet = ""
+    let title: string | undefined
+
+    if (scraped.method === "playwright") {
+      // Playwright returns innerText directly - already clean text
+      textSnippet = scraped.content.slice(0, 1200)
+      // Try to extract title from beginning of text
+      const lines = scraped.content.split("\n").filter((l) => l.trim().length > 0)
+      title = lines[0]?.slice(0, 100)
+    } else {
+      // Regular HTML - extract title and convert to markdown
+      const titleMatch = scraped.content.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+      title = titleMatch?.[1]?.trim()
+
+      // Convert HTML to markdown with cleanup
+      const markdown = htmlToMarkdownWithCleanup(scraped.content)
+      const filtered = filterMarkdownForSignal(markdown)
+      textSnippet = filtered.slice(0, 1200)
+    }
+
     pages.push({
       url: next,
-      title: titleMatch?.[1]?.trim(),
+      title,
       textSnippet,
+      method: scraped.method,
     })
 
-    // Extract links with smart categorization (pagination, navigation, content)
-    const allLinks = extractAllLinks(html, next)
-    for (const link of allLinks) {
-      if (visited.has(link)) continue
-      const normalized = normalizeUrl(link)
-      if (!normalized) continue
-      try {
-        if (new URL(normalized).hostname !== rootHost) continue
-      } catch {
-        continue
+    // Only follow links for static sites (not SPAs)
+    // SPAs are single-page by nature, no need to crawl
+    if (scraped.method === "fetch" && scraped.content.includes("<a")) {
+      const allLinks = extractAllLinks(scraped.content, next)
+      for (const link of allLinks) {
+        if (visited.has(link)) continue
+        const normalized = normalizeUrl(link)
+        if (!normalized) continue
+        try {
+          if (new URL(normalized).hostname !== rootHost) continue
+        } catch {
+          continue
+        }
+        queue.push(normalized)
+        if (queue.length + pages.length > PORTFOLIO_MAX_PAGES * 2) break
       }
-      queue.push(normalized)
-      if (queue.length + pages.length > PORTFOLIO_MAX_PAGES * 2) break
     }
   }
 
@@ -471,16 +743,13 @@ const scrapePortfolio = async (rootUrl: string) => {
 const createEvidenceUrls = ({
   githubUrl,
   portfolioUrl,
-  resumeLinks,
 }: {
   githubUrl: string | null
   portfolioUrl: string | null
-  resumeLinks: string[]
 }) => {
   const raw: Array<{ url: string; source: EvidenceUrl["source"] }> = []
   if (githubUrl) raw.push({ url: githubUrl, source: "form_github" })
   if (portfolioUrl) raw.push({ url: portfolioUrl, source: "form_portfolio" })
-  for (const link of resumeLinks) raw.push({ url: link, source: "resume_extracted" })
 
   const dedup = new Map<string, EvidenceUrl>()
   for (const item of raw) {
@@ -503,23 +772,9 @@ const createEvidenceUrls = ({
   return [...dedup.values()]
 }
 
-const extractResumeLinks = async (resumeUrl: string) => {
-  try {
-    const text = await retryOnce(() => fetchLimitedText(resumeUrl))
-    return extractUrls(text).slice(0, 30)
-  } catch {
-    return []
-  }
-}
-
 const extractResumeTextExcerpt = async (resumeUrl: string) => {
-  try {
-    const text = await retryOnce(() => fetchLimitedText(resumeUrl))
-    const normalized = text.replace(/\s+/g, " ").trim()
-    return normalized.slice(0, 12000)
-  } catch {
-    return null
-  }
+  const ingested = await ingestResumeText(resumeUrl)
+  return ingested
 }
 
 const trimText = (value: string | null | undefined, max = 600) => {
@@ -614,11 +869,11 @@ const scoreSchema = (rubric: RubricDefinition) =>
   JSON.stringify({
     roleFamily: rubric.family,
     rubricVersion: RUBRIC_VERSION,
-    score: "0-100",
+    score: 85,
     scoreBreakdown: rubric.criteria.map((item) => ({
       key: item.key,
       label: item.label,
-      score: `0-${item.max}`,
+      score: Math.min(item.max, 20),
       max: item.max,
     })),
     skills: ["..."],
@@ -627,6 +882,60 @@ const scoreSchema = (rubric: RubricDefinition) =>
     weaknesses: ["..."],
     recommendation: "Strong Hire | Hire | Hold | No Hire",
   })
+
+const extractJsonFromText = (text: string): string | null => {
+  const firstBrace = text.indexOf("{")
+  if (firstBrace === -1) return null
+  const candidate = text.slice(firstBrace)
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < candidate.length; index += 1) {
+    const char = candidate[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === "\\") {
+        escaped = true
+        continue
+      }
+      if (char === '"') inString = false
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === "{") {
+      depth += 1
+      continue
+    }
+    if (char === "}") {
+      depth -= 1
+      if (depth === 0) {
+        return candidate.slice(0, index + 1)
+      }
+    }
+  }
+
+  return null
+}
+
+const repairJson = (jsonText: string) => {
+  const withoutTrailingCommas = jsonText.replace(/,\s*([}\]])/g, "$1")
+  const withoutControlChars = Array.from(withoutTrailingCommas)
+    .filter((char) => {
+      const code = char.charCodeAt(0)
+      if (char === "\n" || char === "\r" || char === "\t") return true
+      return code >= 32
+    })
+    .join("")
+  return withoutControlChars.trim()
+}
 
 const recommendationFromScore = (score: number) => {
   if (score >= 90) return "Strong Hire"
@@ -650,6 +959,116 @@ const clampInt = (value: unknown, min: number, max: number) => {
   const num = typeof value === "number" ? value : Number(value)
   if (Number.isNaN(num)) return min
   return Math.max(min, Math.min(max, Math.round(num)))
+}
+
+const canonicalizeSkill = (value: string) => {
+  const lower = value.trim().toLowerCase()
+  if (!lower) return null
+  if (lower === "reactjs" || lower.includes("react-like")) return "React"
+  if (lower === "node" || lower === "nodejs" || lower === "node.js") return "Node.js"
+  if (lower === "nextjs" || lower === "next.js") return "Next.js"
+  if (lower === "typescript/javascript") return "TypeScript"
+  if (lower === "tailwind" || lower === "tailwindcss") return "TailwindCSS"
+  if (lower === "postgres" || lower === "postgresql") return "PostgreSQL"
+  if (lower === "socket.io" || lower === "websockets") return "WebSocket"
+  if (lower === "ci/cd") return "CI/CD"
+  if (lower.includes("modern stack awareness")) return null
+  if (lower.includes("awareness") || lower.includes("mindset") || lower.includes("communication")) return null
+  if (lower.includes("soft skills") || lower.includes("problem solving")) return null
+  return value.trim()
+}
+
+const extractAdvancedSkills = (text: string | null | undefined): Set<string> => {
+  const skills = new Set<string>()
+  if (!text) return skills
+
+  // Only use the specific tech regex, not the generic pattern
+  // This avoids noise from section headers and random capitalized words
+  TECH_REGEX.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = TECH_REGEX.exec(text)) !== null) {
+    const normalized = canonicalizeSkill(match[0])
+    if (normalized && !TECH_STOPWORDS.has(normalized)) {
+      skills.add(normalized)
+    }
+  }
+
+  return skills
+}
+
+const toSortedSkillArray = (skills: Set<string>) => [...skills].sort((a, b) => a.localeCompare(b))
+
+const collectSkillEvidence = (enrichment: EnrichmentResult, resumeTextExcerpt: string | null): SkillEvidence => {
+  const resumeSkills = extractAdvancedSkills(resumeTextExcerpt)
+
+  const githubSkills = new Set<string>()
+  if (enrichment.github) {
+    for (const language of Object.keys(enrichment.github.languages)) {
+      const normalized = canonicalizeSkill(language)
+      if (normalized) githubSkills.add(normalized)
+    }
+    for (const repo of enrichment.github.topRepos) {
+      for (const language of repo.languages) {
+        const normalized = canonicalizeSkill(language)
+        if (normalized) githubSkills.add(normalized)
+      }
+      for (const token of extractAdvancedSkills(repo.readmeSnippet)) githubSkills.add(token)
+      for (const token of extractAdvancedSkills(repo.name)) githubSkills.add(token)
+    }
+  }
+
+  const portfolioSkills = new Set<string>()
+  if (enrichment.portfolio) {
+    for (const page of enrichment.portfolio.pages) {
+      for (const token of extractAdvancedSkills(page.title)) portfolioSkills.add(token)
+      for (const token of extractAdvancedSkills(page.textSnippet)) portfolioSkills.add(token)
+    }
+  }
+
+  return {
+    resume: toSortedSkillArray(resumeSkills),
+    github: toSortedSkillArray(githubSkills),
+    portfolio: toSortedSkillArray(portfolioSkills),
+  }
+}
+
+const computeSkillOverlap = (jobDescription: string, skillEvidence: SkillEvidence): SkillOverlap => {
+  const jobKeywords = extractAdvancedSkills(jobDescription)
+  const candidateSkills = new Set<string>([...skillEvidence.resume, ...skillEvidence.github, ...skillEvidence.portfolio])
+  const matched = [...candidateSkills].filter((skill) => jobKeywords.has(skill)).sort((a, b) => a.localeCompare(b))
+  const missing = [...jobKeywords].filter((skill) => !candidateSkills.has(skill)).sort((a, b) => a.localeCompare(b))
+  const ratio = jobKeywords.size > 0 ? matched.length / jobKeywords.size : 0
+
+  return {
+    jobKeywords: toSortedSkillArray(jobKeywords),
+    candidateSkills: toSortedSkillArray(candidateSkills),
+    matched,
+    missing,
+    ratio,
+  }
+}
+
+const computeResumeStructureMetrics = (resumeTextExcerpt: string | null): ResumeStructureMetrics => {
+  const text = resumeTextExcerpt ?? ""
+  const bulletCount = (text.match(/(^\s*[-•*])|\n\s*[-•*]/gm) ?? []).length
+  const metricCount = (text.match(/\d+%|\$\d+[\d,]*|\d+x|\d+\s+users?/gi) ?? []).length
+  const hasExperienceSections = /experience|work history|employment|projects/i.test(text)
+
+  return {
+    bulletCount,
+    metricCount,
+    hasExperienceSections,
+  }
+}
+
+const normalizeSkillLabels = (skills: string[]) => {
+  const unique = new Set<string>()
+  for (const skill of skills) {
+    const mapped = canonicalizeSkill(skill)
+    if (!mapped) continue
+    unique.add(mapped)
+  }
+  return [...unique].slice(0, 20)
 }
 
 const buildPrompt = ({
@@ -688,6 +1107,9 @@ const buildPrompt = ({
 
   const prompt = [
     "You are evaluating a candidate for a role using a strict role-adaptive scoring rubric.",
+    "Return strict JSON only with this schema:",
+    scoreSchema(rubric),
+    "",
     `Detected role family: ${roleFamily}`,
     `Rubric version: ${RUBRIC_VERSION}`,
     "Scoring rubric:",
@@ -700,12 +1122,13 @@ const buildPrompt = ({
     "60-69: Average candidate (Hold)",
     "<60: Weak candidate (No Hire)",
     "",
+    "Skills list must contain concrete tools/platforms/frameworks only (e.g., React, Node.js, AWS, Docker, PostgreSQL, Figma, Salesforce, HubSpot, Google Analytics, Jira).",
+    "Do NOT include abstract phrases like 'modern stack awareness', 'communication', or 'problem solving' in skills.",
+    "For non-engineering roles also return tool/platform names (not generic descriptors).",
+    "",
     roleAwareInstruction,
     ...rubric.extraInstructions,
     "When evidence is missing, score neutrally for unrelated criteria instead of penalizing unfairly.",
-    "",
-    "Return strict JSON only with this schema:",
-    scoreSchema(rubric),
     "",
     `Job title: ${trimText(jobTitle, 180)}`,
     `Job description: ${trimText(jobDescription, 2200)}`,
@@ -714,8 +1137,9 @@ const buildPrompt = ({
     `Cover letter: ${trimText(coverLetter, 800) ?? "N/A"}`,
     "",
     `Resume URL: ${resumeUrl}`,
-    `Resume text excerpt: ${trimText(resumeTextExcerpt, 4000) ?? "N/A"}`,
+    `Resume text excerpt: ${trimText(resumeTextExcerpt, 6000) ?? "N/A"}`,
     `Extracted links from resume: ${JSON.stringify(extractedResumeLinks.slice(0, 12))}`,
+    "",
     "",
     `GitHub evidence: ${JSON.stringify(githubEvidence)}`,
     `Portfolio evidence: ${JSON.stringify(portfolioEvidence)}`,
@@ -734,6 +1158,8 @@ const buildMinimalPrompt = ({
   candidateEmail,
   coverLetter,
   resumeTextExcerpt,
+  skillOverlap,
+  resumeStructureMetrics,
 }: {
   roleFamily: RoleFamily
   rubric: RubricDefinition
@@ -743,24 +1169,38 @@ const buildMinimalPrompt = ({
   candidateEmail: string
   coverLetter: string | null
   resumeTextExcerpt: string | null
+  skillOverlap: SkillOverlap
+  resumeStructureMetrics: ResumeStructureMetrics
 }) => [
   "Evaluate this candidate using the strict role-adaptive rubric. Output JSON only.",
+  "Return JSON with this exact structure:",
+  scoreSchema(rubric),
   `Detected role family: ${roleFamily}`,
   `Rubric: ${rubric.criteria.map((item) => `${item.key}(0-${item.max})`).join(", ")}.`,
+  "Skills must be concrete tool/platform names only (examples: React, Node.js, AWS, Docker, Figma, Salesforce, HubSpot, Google Analytics, Jira).",
+  "Avoid abstract skill phrases.",
   roleFamily === "engineering"
     ? "Do NOT penalize missing formal experience when project/GitHub evidence is strong."
     : "Do NOT penalize missing GitHub for non-engineering roles.",
-  scoreSchema(rubric),
   `Role: ${trimText(jobTitle, 160)}`,
   `Job: ${trimText(jobDescription, 1400)}`,
   `Candidate: ${trimText(candidateName, 120)} (${candidateEmail})`,
   `Cover letter: ${trimText(coverLetter, 500) ?? "N/A"}`,
-  `Resume excerpt: ${trimText(resumeTextExcerpt, 1800) ?? "N/A"}`,
+  `Resume excerpt: ${trimText(resumeTextExcerpt, 3000) ?? "N/A"}`,
+  `Resume structure: bullets=${resumeStructureMetrics.bulletCount}, quantified=${resumeStructureMetrics.metricCount}, experience_sections=${resumeStructureMetrics.hasExperienceSections ? "Yes" : "No"}`,
+  `Skill overlap with job: ${skillOverlap.matched.length}/${skillOverlap.jobKeywords.length} matched (${Math.round(skillOverlap.ratio * 100)}%)`,
 ].join("\n")
 
 const parseAiJson = (content: string, rubric: RubricDefinition, fallbackRoleFamily: RoleFamily): ParsedEvaluation => {
-  const cleaned = content.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/, "")
-  const parsed = JSON.parse(cleaned) as {
+  let cleaned = content.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/, "")
+  cleaned = cleaned.replace(/<think[\s\S]*?>[\s\S]*?(<\/think>|$)/gi, "").trim()
+  const extracted = extractJsonFromText(cleaned)
+  if (!extracted) {
+    throw new Error("AI_NO_JSON_FOUND")
+  }
+  const repaired = repairJson(extracted)
+
+  let parsed: {
     roleFamily?: string
     rubricVersion?: string
     score?: number
@@ -770,6 +1210,17 @@ const parseAiJson = (content: string, rubric: RubricDefinition, fallbackRoleFami
     strengths?: string[]
     weaknesses?: string[]
     recommendation?: string
+  }
+
+  try {
+    parsed = JSON.parse(repaired)
+  } catch (parseError) {
+    console.error("[parseAiJson] JSON parse failed:", {
+      error: parseError instanceof Error ? parseError.message : String(parseError),
+      contentLength: repaired.length,
+      contentStart: repaired.slice(0, 100),
+    })
+    throw new Error(`AI_JSON_PARSE_ERROR: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
   }
 
   const parsedRoleFamily = (parsed.roleFamily ?? "").toLowerCase() as RoleFamily
@@ -812,7 +1263,9 @@ const parseAiJson = (content: string, rubric: RubricDefinition, fallbackRoleFami
     rubricVersion: typeof parsed.rubricVersion === "string" ? parsed.rubricVersion : RUBRIC_VERSION,
     score,
     scoreBreakdown: breakdown,
-    skills: Array.isArray(parsed.skills) ? parsed.skills.filter((item): item is string => typeof item === "string").slice(0, 20) : [],
+    skills: Array.isArray(parsed.skills)
+      ? normalizeSkillLabels(parsed.skills.filter((item): item is string => typeof item === "string"))
+      : [],
     summary: typeof parsed.summary === "string" ? parsed.summary : null,
     strengths: Array.isArray(parsed.strengths) ? parsed.strengths.filter((item): item is string => typeof item === "string").slice(0, 8) : [],
     weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses.filter((item): item is string => typeof item === "string").slice(0, 8) : [],
@@ -833,6 +1286,88 @@ const applyRoleAwareScoreAdjustments = (baseScore: number, roleFamily: RoleFamil
   }
 
   return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+const applyDeterministicCaps = ({
+  parsed,
+  overlapRatio,
+  githubEvidencePresent,
+  resumeStructureMetrics,
+  portfolioContentPages,
+}: {
+  parsed: ParsedEvaluation
+  overlapRatio: number
+  githubEvidencePresent: boolean
+  resumeStructureMetrics: ResumeStructureMetrics
+  portfolioContentPages: number
+}) => {
+  const capsApplied: string[] = []
+  const breakdown = parsed.scoreBreakdown.map((item) => ({ ...item }))
+
+  const githubItem = breakdown.find((item) => item.key === "github")
+  if (githubItem && !githubEvidencePresent) {
+    if (githubItem.score !== 0) capsApplied.push("GITHUB_NO_EVIDENCE")
+    githubItem.score = 0
+  }
+
+  const resumeItem = breakdown.find((item) => item.key === "resume")
+  if (resumeItem && resumeStructureMetrics.bulletCount < 2 && resumeItem.score > 5) {
+    resumeItem.score = 5
+    capsApplied.push("RESUME_LOW_STRUCTURE")
+  }
+
+  const portfolioItem = breakdown.find((item) => item.key === "portfolio")
+  if (portfolioItem && portfolioContentPages === 0 && portfolioItem.score > 5) {
+    portfolioItem.score = 5
+    capsApplied.push("PORTFOLIO_NO_CONTENT")
+  }
+
+  let total = breakdown.reduce((sum, item) => sum + item.score, 0)
+  if (overlapRatio === 0 && total > 60) {
+    total = 60
+    capsApplied.push("ZERO_SKILL_OVERLAP")
+  }
+
+  parsed.scoreBreakdown = breakdown
+  parsed.score = total
+  parsed.recommendation = normalizeRecommendation(parsed.recommendation, total)
+
+  return capsApplied
+}
+
+const computeEvidenceIntegrityScore = ({
+  resumeIngestionStatus,
+  githubEnriched,
+  portfolioContentPages,
+  skillOverlap,
+  failuresCount,
+}: {
+  resumeIngestionStatus: ResumeIngestionStatus
+  githubEnriched: boolean
+  portfolioContentPages: number
+  skillOverlap: SkillOverlap
+  failuresCount: number
+}) => {
+  const resumeEvidenceValid = resumeIngestionStatus === "PDF_PARSED" || resumeIngestionStatus === "TEXT_PARSED" ? 1 : 0
+  const githubEvidenceValid = githubEnriched ? 1 : 0
+  const portfolioEvidenceValid = portfolioContentPages > 0 ? 1 : 0
+  const overlapEvidencePresent = skillOverlap.jobKeywords.length > 0 ? 1 : 0
+  const sourceChecks = 3
+  const sourceSuccess = resumeEvidenceValid + githubEvidenceValid + portfolioEvidenceValid
+  const fetchSuccessRate = sourceSuccess / sourceChecks
+  const penalty = Math.min(20, failuresCount * 4)
+
+  const raw = 100
+    * (0.30 * resumeEvidenceValid
+      + 0.25 * githubEvidenceValid
+      + 0.20 * portfolioEvidenceValid
+      + 0.15 * overlapEvidencePresent
+      + 0.10 * fetchSuccessRate)
+    - penalty
+
+  const score = Math.max(0, Math.min(100, Math.round(raw)))
+  const tier = score >= 80 ? "high" : score >= 60 ? "medium" : "low"
+  return { score, tier }
 }
 
 export async function evaluateCandidateJob(
@@ -871,12 +1406,12 @@ export async function evaluateCandidateJob(
   if (!application) throw new Error("APPLICATION_NOT_FOUND")
 
   const failures: EvidenceFailure[] = []
-  const resumeTextExcerpt = await extractResumeTextExcerpt(application.resumeUrl)
-  const extractedResumeLinks = await extractResumeLinks(application.resumeUrl)
+  const resumeIngestion = await extractResumeTextExcerpt(application.resumeUrl)
+  const trimmedResumeTextExcerpt = resumeIngestion.text?.slice(0, 6000) ?? null
+  const extractedResumeLinks: string[] = []
   const evidenceUrls = createEvidenceUrls({
     githubUrl: application.githubUrl,
     portfolioUrl: application.portfolioUrl,
-    resumeLinks: extractedResumeLinks,
   })
 
   const githubTarget = evidenceUrls.find((item) => item.kind === "github_profile" || item.kind === "github_repo")
@@ -884,16 +1419,23 @@ export async function evaluateCandidateJob(
 
   let github: EnrichmentResult["github"] = null
   let portfolio: EnrichmentResult["portfolio"] = null
+  let githubFetchStatus: GithubFetchStatus = githubTarget ? "failed" : "none"
 
   if (options.enableEvidenceScraping && githubTarget) {
     try {
       github = await retryOnce(() => scrapeGithub(githubTarget.normalizedUrl, options.githubToken))
+      githubFetchStatus = "success"
     } catch (error) {
+      const reason = error instanceof Error ? error.message : "GITHUB_SCRAPE_FAILED"
+      if (reason.includes("403")) githubFetchStatus = "403"
+      else if (reason.includes("429")) githubFetchStatus = "rate_limited"
+      else if (reason.includes("FETCH") || reason.includes("NETWORK")) githubFetchStatus = "network_error"
+      else githubFetchStatus = "failed"
       failures.push({
         source: "github",
         url: githubTarget.normalizedUrl,
-        reason: error instanceof Error ? error.message : "GITHUB_SCRAPE_FAILED",
-        transient: true,
+        reason,
+        transient: githubFetchStatus !== "403",
       })
     }
   }
@@ -911,19 +1453,63 @@ export async function evaluateCandidateJob(
     }
   }
 
+  const portfolioContentPages = portfolio?.pages.filter((page) => page.textSnippet.trim().length > 0).length ?? 0
+
+  if (resumeIngestion.status !== "PDF_PARSED" && resumeIngestion.status !== "TEXT_PARSED") {
+    failures.push({
+      source: "resume",
+      url: resumeIngestion.canonicalUrl,
+      reason: resumeIngestion.status,
+      transient: false,
+    })
+  }
+
   const enrichment: EnrichmentResult = {
     github,
     portfolio,
     failures,
     usedUrls: evidenceUrls,
     extractedResumeLinks,
-    resumeTextExcerpt,
+    resumeTextExcerpt: trimmedResumeTextExcerpt,
+    githubFetchStatus,
+    githubUrlProvided: !!application.githubUrl,
+    githubEnriched: !!github,
+    portfolioContentPages,
+    resumeIngestionStatus: resumeIngestion.status,
+    resumeContentType: resumeIngestion.contentType,
+    resumeSizeBytes: resumeIngestion.sizeBytes,
   }
 
   const roleFamily = inferRoleFamily(application.jobTitle, application.jobDescription)
   const rubric = getRubric(roleFamily)
   const sarvamClient = new SarvamAIClient({ apiSubscriptionKey: options.sarvamApiKey })
   const compact = compactEnrichment(enrichment)
+  const skillEvidence = collectSkillEvidence(enrichment, trimmedResumeTextExcerpt)
+  const skillOverlap = computeSkillOverlap(application.jobDescription, skillEvidence)
+  const resumeStructureMetrics = computeResumeStructureMetrics(trimmedResumeTextExcerpt)
+
+  const integrity = computeEvidenceIntegrityScore({
+    resumeIngestionStatus: resumeIngestion.status,
+    githubEnriched: !!github,
+    portfolioContentPages,
+    skillOverlap,
+    failuresCount: failures.length,
+  })
+
+  // Log the evidence metadata (NOT sent to AI - just for diagnostics)
+  console.log("[evaluateCandidateJob] Evidence metadata collected (not in prompt):", {
+    applicationId: application.id,
+    roleFamily,
+    githubUrlProvided: !!application.githubUrl,
+    githubFetchStatus,
+    githubEnriched: !!github,
+    portfolioContentPages,
+    resumeIngestionStatus: resumeIngestion.status,
+    resumeExcerptLength: trimmedResumeTextExcerpt?.length ?? 0,
+    evidenceIntegrityScore: integrity.score,
+    evidenceIntegrityTier: integrity.tier,
+  })
+
   const fullPrompt = buildPrompt({
     roleFamily,
     rubric,
@@ -933,7 +1519,7 @@ export async function evaluateCandidateJob(
     candidateEmail: application.email,
     coverLetter: application.coverLetter,
     resumeUrl: application.resumeUrl,
-    resumeTextExcerpt,
+    resumeTextExcerpt: trimmedResumeTextExcerpt,
     extractedResumeLinks,
     githubEvidence: compact.github,
     portfolioEvidence: compact.portfolio,
@@ -947,7 +1533,9 @@ export async function evaluateCandidateJob(
     candidateName: application.name,
     candidateEmail: application.email,
     coverLetter: application.coverLetter,
-    resumeTextExcerpt,
+    resumeTextExcerpt: trimmedResumeTextExcerpt,
+    skillOverlap,
+    resumeStructureMetrics,
   })
 
   const parseRetryAfterMs = (error: unknown) => {
@@ -971,19 +1559,47 @@ export async function evaluateCandidateJob(
 
   const runCompletion = async (content: string) =>
     sarvamClient.chat.completions({
-      temperature: SARVAM_THINKING_TEMPERATURE,
-      top_p: SARVAM_TOP_P,
-      reasoning_effort: "low",
+      temperature: 0,
+      top_p: 1,
       wiki_grounding: false,
       max_tokens: SARVAM_MAX_OUTPUT_TOKENS,
       messages: [
         {
           role: "system",
-          content: `You are an expert role-adaptive hiring evaluator. Be concise, evidence-driven, and output valid JSON only. Keep response within ${SARVAM_MAX_OUTPUT_TOKENS} tokens.`,
+          content:
+            "You are a JSON API. Respond with a single valid JSON object. Do NOT output explanations. Do NOT output <think>. Do NOT output text before or after JSON. The first character must be { and the last character must be }.",
         },
         {
           role: "user",
-          content: `Context window limit is ${SARVAM_MAX_CONTEXT_TOKENS} tokens. ${content}`,
+          content,
+        },
+      ],
+    })
+
+  const runStrictJsonRecovery = async (context: string) =>
+    sarvamClient.chat.completions({
+      temperature: 0,
+      top_p: 1,
+      wiki_grounding: false,
+      max_tokens: SARVAM_MAX_OUTPUT_TOKENS,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a JSON API. Respond with a single valid JSON object. Do NOT output explanations. Do NOT output <think>. Do NOT output text before or after JSON. The first character must be { and the last character must be }.",
+        },
+        {
+          role: "user",
+          content: [
+            "Output the final JSON only.",
+            "Do not explain.",
+            "Start with { and end with }.",
+            "Use this exact schema:",
+            scoreSchema(rubric),
+            "",
+            "Candidate context:",
+            context,
+          ].join("\n"),
         },
       ],
     })
@@ -994,7 +1610,11 @@ export async function evaluateCandidateJob(
   // Global limiter throttles throughput; this retry handles transient provider failures.
   while (true) {
     try {
-      completion = await runCompletion(useMinimalPrompt ? minimalPrompt : fullPrompt)
+      const promptToUse = useMinimalPrompt ? minimalPrompt : fullPrompt
+      console.log("[evaluateCandidateJob] ===== FULL PROMPT TO AI =====")
+      console.log(promptToUse)
+      console.log("[evaluateCandidateJob] ===== END PROMPT (length:", promptToUse.length, ") =====")
+      completion = await runCompletion(promptToUse)
       break
     } catch (error) {
       if (!useMinimalPrompt && isPromptTooLongError(error)) {
@@ -1010,20 +1630,99 @@ export async function evaluateCandidateJob(
 
   const content = completion.choices?.[0]?.message?.content
   if (!content) throw new Error("AI_EMPTY_RESPONSE")
-  const parsed = parseAiJson(content, rubric, roleFamily)
+
+  let parsed: ParsedEvaluation
+
+  if (!content.includes("{")) {
+    console.warn("[evaluateCandidateJob] First response has no JSON brace, running strict JSON recovery", {
+      applicationId: application.id,
+    })
+    const recoveryCompletion = await runStrictJsonRecovery(minimalPrompt)
+    const recoveryContent = recoveryCompletion.choices?.[0]?.message?.content
+    if (!recoveryContent) throw new Error("AI_EMPTY_RECOVERY_RESPONSE")
+    parsed = parseAiJson(recoveryContent, rubric, roleFamily)
+  } else {
+
+    // Log AI response for debugging
+    console.log("[evaluateCandidateJob] ===== FULL AI RESPONSE =====")
+    console.log(content)
+    console.log("[evaluateCandidateJob] ===== END RESPONSE (length:", content.length, ") =====")
+
+    // Log first chars to debug unexpected responses
+    if (content.startsWith("<")) {
+      console.error("[evaluateCandidateJob] AI response starts with markup/think instead of JSON:", {
+        contentLength: content.length,
+        firstChars: content.slice(0, 150),
+        applicationId: application.id,
+      })
+    }
+
+    try {
+      parsed = parseAiJson(content, rubric, roleFamily)
+    } catch (parseError) {
+      const message = parseError instanceof Error ? parseError.message : String(parseError)
+      if (message.includes("AI_NO_JSON_FOUND")) {
+        console.warn("[evaluateCandidateJob] No JSON found in first response, running strict JSON recovery", {
+          applicationId: application.id,
+        })
+
+        const recoveryCompletion = await runStrictJsonRecovery(minimalPrompt)
+        const recoveryContent = recoveryCompletion.choices?.[0]?.message?.content
+        if (!recoveryContent) throw new Error("AI_EMPTY_RECOVERY_RESPONSE")
+
+        console.log("[evaluateCandidateJob] Recovery AI response received:", {
+          applicationId: application.id,
+          contentLength: recoveryContent.length,
+          content: recoveryContent.slice(0, 500),
+        })
+
+        parsed = parseAiJson(recoveryContent, rubric, roleFamily)
+      } else {
+        console.error("[evaluateCandidateJob] Failed to parse AI response:", {
+          error: message,
+          applicationId: application.id,
+        })
+        throw parseError
+      }
+    }
+  }
+
+  // Log parsed evaluation
+  console.log("[evaluateCandidateJob] Parsed evaluation:", {
+    applicationId: application.id,
+    score: parsed.score,
+    recommendation: parsed.recommendation,
+    roleFamily: parsed.roleFamily,
+    skillsCount: parsed.skills?.length ?? 0,
+    strengths: parsed.strengths,
+    weaknesses: parsed.weaknesses,
+    summary: parsed.summary?.slice(0, 200),
+  })
   const finalScore = applyRoleAwareScoreAdjustments(parsed.score ?? 0, roleFamily, enrichment)
   parsed.score = finalScore
   parsed.roleFamily = roleFamily
   parsed.rubricVersion = RUBRIC_VERSION
   parsed.recommendation = normalizeRecommendation(parsed.recommendation, finalScore)
+  const capRulesApplied = applyDeterministicCaps({
+    parsed,
+    overlapRatio: skillOverlap.ratio,
+    githubEvidencePresent: !!github,
+    resumeStructureMetrics,
+    portfolioContentPages,
+  })
 
   const persistedEvidence = {
     ...enrichment,
     evaluationMeta: {
       roleFamily,
       rubricVersion: RUBRIC_VERSION,
+      evidenceIntegrityScore: integrity.score,
+      evidenceIntegrityTier: integrity.tier,
+      capRulesApplied,
     },
   }
+
+  const persistedScore = parsed.score ?? finalScore
 
   await db
     .insert(candidateEvaluations)
@@ -1032,9 +1731,9 @@ export async function evaluateCandidateJob(
       jobId: application.jobId,
       organizationId: application.organizationId,
       model: "sarvam",
-      score: finalScore,
+      score: persistedScore,
       skillsJson: JSON.stringify(parsed.skills),
-      resumeTextExcerpt,
+      resumeTextExcerpt: trimmedResumeTextExcerpt,
       summary: parsed.summary,
       strengthsJson: JSON.stringify(parsed.strengths),
       weaknessesJson: JSON.stringify(parsed.weaknesses),
@@ -1049,9 +1748,9 @@ export async function evaluateCandidateJob(
         jobId: application.jobId,
         organizationId: application.organizationId,
         model: "sarvam",
-        score: finalScore,
+        score: persistedScore,
         skillsJson: JSON.stringify(parsed.skills),
-        resumeTextExcerpt,
+        resumeTextExcerpt: trimmedResumeTextExcerpt,
         summary: parsed.summary,
         strengthsJson: JSON.stringify(parsed.strengths),
         weaknessesJson: JSON.stringify(parsed.weaknesses),

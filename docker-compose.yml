@@ -36,15 +36,41 @@ services:
     depends_on:
       - api
 
-  worker:
-    image: oven/bun:1
+  worker-fetch:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: orizen-flow-worker:latest
     restart: unless-stopped
-    working_dir: /app
-    command: sh -c "bun install --frozen-lockfile --ignore-scripts && cd apps/worker && bun run dev"
-    volumes:
-      - ./:/app
+    env_file:
+      - .env
     environment:
       - REDIS_URL=redis://redis:6379
-      - WORKER_CONCURRENCY=2
+      - WORKER_TYPE=fetch
+      - WORKER_CONCURRENCY=20
+      - ENABLE_PLAYWRIGHT=false
+      - MAX_BROWSER_PAGES=4
+      - PLAYWRIGHT_VISIBLE_TEXT_THRESHOLD=999999
+    cpus: 2
+    mem_limit: 4g
+    depends_on:
+      - redis
+
+  worker-browser:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: orizen-flow-worker:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - WORKER_TYPE=browser
+      - WORKER_CONCURRENCY=4
+      - MAX_BROWSER_PAGES=4
+      - PLAYWRIGHT_VISIBLE_TEXT_THRESHOLD=300
+    cpus: 3
+    mem_limit: 10g
     depends_on:
       - redis

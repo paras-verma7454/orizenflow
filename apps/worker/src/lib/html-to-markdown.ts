@@ -61,6 +61,12 @@ export const extractMainContent = (html: string): string => {
             "aside",
             "footer",
             "header",
+            "form",
+            "input",
+            "button",
+            "svg",
+            "iframe",
+            "canvas",
             "[role='navigation']",
             "[role='complementary']",
             ".nav",
@@ -99,10 +105,21 @@ export const extractMainContent = (html: string): string => {
 
 /**
  * Normalize and resolve relative URLs
+ * Blocks non-http/https schemes and fragment-only links
  */
 export const resolveUrl = (url: string, baseUrl: string): string | null => {
     try {
-        return new URL(url, baseUrl).toString()
+        const trimmed = url.trim()
+        // Block non-http schemes (mailto, tel, javascript, etc)
+        if (!/^https?:/i.test(trimmed) && !trimmed.startsWith("/") && !trimmed.startsWith(".")) {
+            return null
+        }
+        const resolved = new URL(trimmed, baseUrl).toString()
+        // Block fragment-only links
+        if (resolved === baseUrl || resolved === baseUrl + "#") {
+            return null
+        }
+        return resolved
     } catch {
         return null
     }
@@ -223,9 +240,43 @@ export const extractLinksByType = (
 }
 
 /**
- * Convert HTML to Markdown with cleaned main content
+ * Intelligently filter markdown for signal-rich content
+ * Prioritizes lines about projects, case studies, architecture, impact
+ * Less aggressive - keeps more content to avoid empty results
+ */
+export const filterMarkdownForSignal = (markdown: string): string => {
+    const lines = markdown.split("\n")
+    const signalKeywords = /project|case study|built|developed|implemented|created|designed|architecture|impact|stack|technology|experience|skill|achievement|result|outcome|portfolio|work|background|about|bio/i
+
+    const importantLines: string[] = []
+    for (const line of lines) {
+        const trimmed = line.trim()
+        // Keep headings, signal-rich lines, and non-empty content lines
+        if (trimmed.length > 0 && (
+            signalKeywords.test(line) ||
+            trimmed.startsWith("#") ||
+            trimmed.length > 30  // Keep longer content lines
+        )) {
+            importantLines.push(line)
+        }
+    }
+
+    // If we have signal lines, use them; otherwise fall back to original
+    if (importantLines.length >= 3) {  // Need at least a few lines
+        return importantLines.join("\n")
+    }
+    return markdown
+}
+
+/**
+ * Convert HTML to Markdown with cleaned main content and noise removal
  */
 export const htmlToMarkdownWithCleanup = (html: string): string => {
     const cleanedHtml = extractMainContent(html)
-    return convertHtmlToMarkdown(cleanedHtml)
+    let markdown = convertHtmlToMarkdown(cleanedHtml)
+    // Remove code blocks (often noise for hiring evaluation)
+    markdown = markdown.replace(/```[\s\S]*?```/g, "")
+    // Remove large tables (convert to text if needed)
+    markdown = markdown.replace(/\|.*\|/g, "")
+    return markdown
 }
