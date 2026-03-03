@@ -1,29 +1,28 @@
-import { ImageResponse } from "@takumi-rs/image-response/wasm"
-import { notFound } from "next/navigation"
+import { ImageResponse } from "next/og";
 // import type { blogSource, docsSource } from "@/lib/source"
 
-import { config } from "@/lib/config"
+import { config } from "@/lib/config";
 
 // type Source = typeof blogSource | typeof docsSource
 
 interface OgImageOptions {
   // source: Source
-  sectionName: string
-  defaultTitle: string
-  defaultDescription: string
+  sectionName: string;
+  defaultTitle: string;
+  defaultDescription: string;
 }
 
 export async function generateOgImage(
   slug: string[] | undefined,
   options: OgImageOptions,
 ): Promise<ImageResponse> {
-  const { sectionName, defaultTitle, defaultDescription } = options
+  const { sectionName, defaultTitle, defaultDescription } = options;
 
   // const page = source.getPage(slug)
   // if (!page) notFound()
 
-  const title = defaultTitle
-  const description = defaultDescription
+  const title = defaultTitle;
+  const description = defaultDescription;
 
   const imageResponse = new ImageResponse(
     <div
@@ -79,13 +78,15 @@ export async function generateOgImage(
       </div>
     </div>,
     {
-      module: import("@takumi-rs/wasm/next"),
       width: 1200,
       height: 630,
     },
-  )
+  );
 
-  imageResponse.headers.set("Cache-Control", "public, immutable, no-transform, max-age=31536000")
+  imageResponse.headers.set(
+    "Cache-Control",
+    "public, immutable, no-transform, max-age=31536000",
+  );
 
-  return imageResponse
+  return imageResponse;
 }

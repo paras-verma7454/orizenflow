@@ -152,18 +152,11 @@ export async function generateMetadata({
 
   const pageUrl = `${config.app.url}/${orgSlug}/${job.slug}/${job.shortId}`;
 
-  const orgLogo =
-    job.organization.logo ||
-    (job.organization.websiteUrl
-      ? `https://www.google.com/s2/favicons?domain=${job.organization.websiteUrl}&sz=128`
-      : "");
-
   const ogImage = `${config.app.url}/api/og/job?${new URLSearchParams({
     jobTitle: job.title,
     orgName: orgName,
     jobType: job.jobType || "",
     location: job.location || "",
-    orgLogo,
   }).toString()}`;
 
   const keywords = [

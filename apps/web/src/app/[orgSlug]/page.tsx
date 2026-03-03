@@ -32,19 +32,32 @@ type JobsGalleryResponse = {
 };
 
 async function getJobsGallery(orgSlug: string) {
-  const apiBase = config.api.internalUrl || config.api.url;
-  const res = await fetch(
-    `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/jobs`,
-    {
-      cache: "no-store",
-    },
-  );
+  const apiBases = [
+    config.api.internalUrl,
+    config.api.url,
+    config.app.url,
+  ].filter((value): value is string => Boolean(value));
 
-  if (!res.ok) {
-    return null;
+  for (const apiBase of apiBases) {
+    try {
+      const res = await fetch(
+        `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/jobs`,
+        {
+          cache: "no-store",
+        },
+      );
+
+      if (!res.ok) {
+        continue;
+      }
+
+      return (await res.json()) as JobsGalleryResponse;
+    } catch {
+      continue;
+    }
   }
 
-  return (await res.json()) as JobsGalleryResponse;
+  return null;
 }
 
 export async function generateMetadata({
@@ -65,16 +78,10 @@ export async function generateMetadata({
   const { organization, data: jobs } = result;
   const title = `${organization.name} — Careers`;
   const description = `Join ${organization.name}. Browse ${jobs.length} open position${jobs.length !== 1 ? "s" : ""} and find your next opportunity.`;
-  const orgLogo =
-    organization.logo ||
-    (organization.websiteUrl
-      ? `https://www.google.com/s2/favicons?domain=${organization.websiteUrl}&sz=128`
-      : "");
 
   const ogImage = `${config.app.url}/api/og/organization?${new URLSearchParams({
     orgName: organization.name,
     jobCount: String(jobs.length),
-    orgLogo,
   }).toString()}`;
 
   return {
@@ -127,12 +134,9 @@ export default async function OrgJobsPage({
                 Careers
               </p>
             </div>
-            {(organization.logo || organization.websiteUrl) && (
+            {organization.logo && (
               <img
-                src={
-                  organization.logo ||
-                  `https://www.google.com/s2/favicons?domain=${organization.websiteUrl}&sz=128`
-                }
+                src={organization.logo}
                 alt={organization.name}
                 className="h-16 w-16 rounded-lg border border-slate-300 bg-white object-contain p-1 shadow-md dark:border-slate-700"
               />
@@ -166,12 +170,9 @@ export default async function OrgJobsPage({
               </p>
             )}
           </div>
-          {(organization.logo || organization.websiteUrl) && (
+          {organization.logo && (
             <img
-              src={
-                organization.logo ||
-                `https://www.google.com/s2/favicons?domain=${organization.websiteUrl}&sz=128`
-              }
+              src={organization.logo}
               alt={organization.name}
               className="h-20 w-20 rounded-lg border border-slate-300 bg-white object-contain p-2 shadow-xl dark:border-slate-700"
             />

@@ -1,4 +1,4 @@
-import { ImageResponse } from "@takumi-rs/image-response/wasm";
+import { ImageResponse } from "next/og";
 
 export const dynamic = "force-dynamic";
 
@@ -8,213 +8,165 @@ export async function GET(request: Request) {
   const orgName = searchParams.get("orgName") ?? "Organization";
   const jobType = searchParams.get("jobType") ?? "";
   const location = searchParams.get("location") ?? "";
-  const orgLogo = searchParams.get("orgLogo");
 
-  const fontData900 = await fetch(
-    new URL(
-      "https://github.com/google/fonts/raw/main/ofl/inter/Inter-Black.ttf",
-      import.meta.url,
-    ),
-  ).then((res) => res.arrayBuffer());
-
-  const fontData500 = await fetch(
-    new URL(
-      "https://github.com/google/fonts/raw/main/ofl/inter/Inter-Medium.ttf",
-      import.meta.url,
-    ),
-  ).then((res) => res.arrayBuffer());
-
-  const jobTypeColorMap: Record<string, string> = {
-    remote: "rgba(34, 197, 94, 0.9)",
-    hybrid: "rgba(59, 130, 246, 0.9)",
-    "on-site": "rgba(245, 158, 11, 0.9)",
-  };
-
-  const jobTypeColor =
-    jobTypeColorMap[jobType.toLowerCase()] || "rgba(59, 130, 246, 0.9)";
-
-  const imageResponse = new ImageResponse(
+  return new ImageResponse(
     <div
       style={{
-        width: "100%",
         height: "100%",
+        width: "100%",
         display: "flex",
         flexDirection: "column",
-        background:
-          "linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f1419 100%)",
+        backgroundColor: "#020617", // slate-950
+        color: "white",
+        fontFamily: "sans-serif",
+        padding: "70px 80px",
         position: "relative",
-        overflow: "hidden",
-        fontFamily: '"Inter"',
       }}
     >
-      {/* Accent gradient blob */}
+      {/* Background Mesh */}
       <div
         style={{
-          position: "absolute",
-          width: "600px",
-          height: "600px",
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${jobTypeColor.replace("0.9", "0.15")} 0%, transparent 70%)`,
-          top: "-200px",
-          right: "-200px",
-        }}
-      />
-
-      {/* Subtle grid */}
-      <div
-        style={{
-          position: "absolute",
-          width: "100%",
-          height: "100%",
-          backgroundImage:
-            "linear-gradient(0deg, transparent 24%, rgba(255, 255, 255, 0.02) 25%, rgba(255, 255, 255, 0.02) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, 0.02) 75%, rgba(255, 255, 255, 0.02) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(255, 255, 255, 0.02) 25%, rgba(255, 255, 255, 0.02) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, 0.02) 75%, rgba(255, 255, 255, 0.02) 76%, transparent 77%, transparent)",
-          backgroundSize: "80px 80px",
-          opacity: 0.3,
-        }}
-      />
-
-      {/* Content */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          height: "100%",
-          padding: "70px 80px",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage:
+            "radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.08) 0%, transparent 50%), radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.08) 0%, transparent 50%)",
+        }}
+      />
+
+      {/* Subtle Grid */}
+      <div
+        style={{
+          display: "flex",
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage:
+            "linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+        }}
+      />
+
+      {/* Brand */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          fontSize: 22,
+          fontWeight: 600,
+          color: "#94a3b8", // slate-400
+          zIndex: 10,
         }}
       >
-        <div>
-          {orgLogo && (
-            <img
-              src={orgLogo}
-              width="64"
-              height="64"
-              style={{
-                borderRadius: "12px",
-                marginBottom: "24px",
-                objectFit: "cover",
-              }}
-            />
-          )}
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              marginBottom: "32px",
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            {jobType && (
-              <div
-                style={{
-                  backgroundColor: jobTypeColor,
-                  color: "#ffffff",
-                  padding: "8px 16px",
-                  borderRadius: "6px",
-                  fontSize: "18px",
-                  fontWeight: 600,
-                  textTransform: "capitalize",
-                  letterSpacing: "0.5px",
-                }}
-              >
-                {jobType}
-              </div>
-            )}
-            {location && (
-              <div
-                style={{
-                  color: "rgba(255, 255, 255, 0.6)",
-                  fontSize: "18px",
-                  fontWeight: 500,
-                }}
-              >
-                📍 {location}
-              </div>
-            )}
-          </div>
-
-          <h1
-            style={{
-              fontSize: "88px",
-              fontWeight: 900,
-              color: "white",
-              margin: "0",
-              lineHeight: 1.1,
-              marginBottom: "20px",
-              letterSpacing: "-1.5px",
-              maxWidth: "1000px",
-            }}
-          >
-            {jobTitle}
-          </h1>
-
-          <div
-            style={{
-              fontSize: "32px",
-              color: "rgba(255, 255, 255, 0.6)",
-              fontWeight: 500,
-            }}
-          >
-            at{" "}
-            <span style={{ color: "white", fontWeight: 700 }}>{orgName}</span>
-          </div>
-        </div>
-
-        {/* Footer accent */}
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
+            width: 24,
+            height: 4,
+            background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+            borderRadius: "2px",
+          }}
+        />
+        Orizen Flow / Careers
+      </div>
+
+      {/* Main Content */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          justifyContent: "center",
+          zIndex: 10,
+          gap: "24px",
+        }}
+      >
+        {/* Tags */}
+        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+          {jobType && (
+            <div
+              style={{
+                display: "flex",
+                padding: "8px 20px",
+                borderRadius: "8px",
+                fontSize: 20,
+                fontWeight: 600,
+                textTransform: "capitalize",
+                color: "#93c5fd", // blue-300
+                background: "rgba(59, 130, 246, 0.15)",
+                border: "1px solid rgba(59, 130, 246, 0.2)",
+                boxShadow: "0 2px 10px rgba(59, 130, 246, 0.1)",
+              }}
+            >
+              {jobType}
+            </div>
+          )}
+          {location && (
+            <div
+              style={{
+                display: "flex",
+                padding: "8px 20px",
+                borderRadius: "8px",
+                fontSize: 20,
+                fontWeight: 500,
+                color: "#e2e8f0", // slate-200
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+              }}
+            >
+              {location}
+            </div>
+          )}
+        </div>
+
+        {/* Title */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
           }}
         >
           <div
             style={{
-              width: "120px",
-              height: "4px",
-              background: jobTypeColor,
-              borderRadius: "2px",
-            }}
-          />
-          <div
-            style={{
-              fontSize: "20px",
-              color: "rgba(255, 255, 255, 0.5)",
+              display: "flex",
+              fontSize: 84,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: "-0.03em",
+              color: "white",
+              textShadow: "0 10px 30px rgba(0,0,0,0.5)",
             }}
           >
-            Orizen Flow
+            {jobTitle}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              fontSize: 40,
+              color: "#94a3b8", // slate-400
+              fontWeight: 500,
+              letterSpacing: "-0.02em",
+              alignItems: "center",
+              gap: "12px",
+            }}
+          >
+            <span>at</span>
+            <span style={{ color: "white", fontWeight: 700 }}>{orgName}</span>
           </div>
         </div>
       </div>
     </div>,
     {
-      module: import("@takumi-rs/wasm/next"),
       width: 1200,
       height: 630,
-      fonts: [
-        {
-          name: "Inter",
-          data: fontData900,
-          style: "normal",
-          weight: 900,
-        },
-        {
-          name: "Inter",
-          data: fontData500,
-          style: "normal",
-          weight: 500,
-        },
-      ],
     },
   );
-
-  imageResponse.headers.set(
-    "Cache-Control",
-    "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
-  );
-
-  return imageResponse;
 }
