@@ -13,14 +13,7 @@ COPY --from=prepare /app/out/json/ .
 COPY --from=prepare /app/out/bun.lock .
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY --from=prepare /app/out/full/ .
-ARG NODE_ENV=production
-ARG SKIP_ENV_VALIDATION=true
-ARG ADMIN_EMAILS=""
-ARG INTERNAL_API_URL=http://api:4000
-ENV NODE_ENV=${NODE_ENV}
-ENV SKIP_ENV_VALIDATION=${SKIP_ENV_VALIDATION}
-ENV ADMIN_EMAILS=${ADMIN_EMAILS}
-ENV INTERNAL_API_URL=${INTERNAL_API_URL}
+COPY --from=prepare /app/.env ./.env
 RUN bun run build
 
 FROM base AS runner

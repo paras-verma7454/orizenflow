@@ -9,10 +9,6 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      args:
-        - NODE_ENV=production
-        - SKIP_ENV_VALIDATION=true
-        - ADMIN_EMAILS=${ADMIN_EMAILS:-}
     image: orizen-flow-api:latest
     restart: unless-stopped
     env_file:
@@ -29,11 +25,6 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args:
-        - NODE_ENV=production
-        - SKIP_ENV_VALIDATION=true
-        - ADMIN_EMAILS=${ADMIN_EMAILS:-}
-        - INTERNAL_API_URL=http://api:4000
     image: orizen-flow-web:latest
     restart: unless-stopped
     env_file:
@@ -49,10 +40,6 @@ services:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
-      args:
-        - NODE_ENV=production
-        - SKIP_ENV_VALIDATION=true
-        - ADMIN_EMAILS=${ADMIN_EMAILS:-}
     image: orizen-flow-worker:latest
     restart: unless-stopped
     env_file:
@@ -73,10 +60,6 @@ services:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
-      args:
-        - NODE_ENV=production
-        - SKIP_ENV_VALIDATION=true
-        - ADMIN_EMAILS=${ADMIN_EMAILS:-}
     image: orizen-flow-worker:latest
     restart: unless-stopped
     env_file:
