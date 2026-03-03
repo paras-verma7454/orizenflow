@@ -108,12 +108,20 @@ export function Footer() {
           <span className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Orizen Flow. All rights reserved.
           </span>
-          <a
-            href="/privacy"
-            className="text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
-          >
-            Privacy Policy
-          </a>
+          <div className="flex gap-4">
+            <a
+              href="/privacy"
+              className="text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+            >
+              Privacy Policy
+            </a>
+            <a
+              href="/terms"
+              className="text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+            >
+              Terms of Service
+            </a>
+          </div>
         </div>
       </div>
     </footer>
