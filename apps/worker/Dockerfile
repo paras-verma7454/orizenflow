@@ -18,7 +18,7 @@ COPY packages/db/package.json packages/db/package.json
 COPY packages/queue/package.json packages/queue/package.json
 COPY packages/tsconfig/package.json packages/tsconfig/package.json
 
-RUN bun install --frozen-lockfile --ignore-scripts
+RUN bun install --ignore-scripts
 
 COPY . .
 
