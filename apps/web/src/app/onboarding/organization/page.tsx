@@ -77,7 +77,7 @@ export default function OrganizationOnboardingPage() {
     },
     onSuccess: () => {
       toast.success("Organization setup complete")
-      router.push("/dashboard/jobs/new")
+      router.push("/dashboard")
     },
     onError: (err) => {
       toast.error(err.message)

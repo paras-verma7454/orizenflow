@@ -69,6 +69,60 @@ const toSlug = (name: string) =>
 
 export const organizationRouter = new Hono<{ Variables: Session }>()
   .use("/*", authMiddleware)
+  .post(
+    "/ensure-active",
+    describeRoute({
+      tags: ["organization"],
+      description: "Ensure the current session has an active organization if membership exists",
+      responses: {
+        200: {
+          description: "Active organization ensured",
+          content: {
+            "application/json": {
+              schema: resolver(
+                z.object({
+                  data: z.object({
+                    hasOrganization: z.boolean(),
+                    activeOrganizationId: z.string().nullable(),
+                  }),
+                }),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      const authSession = c.get("session")
+
+      if (authSession.activeOrganizationId) {
+        const [activeOrg] = await db
+          .select({ id: organization.id })
+          .from(organization)
+          .where(eq(organization.id, authSession.activeOrganizationId))
+
+        if (activeOrg) {
+          return c.json({ data: { hasOrganization: true, activeOrganizationId: activeOrg.id } })
+        }
+      }
+
+      const [existingMembership] = await db
+        .select({ organizationId: member.organizationId })
+        .from(member)
+        .where(eq(member.userId, authSession.userId))
+
+      if (!existingMembership) {
+        return c.json({ data: { hasOrganization: false, activeOrganizationId: null } })
+      }
+
+      await db
+        .update(session)
+        .set({ activeOrganizationId: existingMembership.organizationId })
+        .where(and(eq(session.id, authSession.id), eq(session.userId, authSession.userId)))
+
+      return c.json({ data: { hasOrganization: true, activeOrganizationId: existingMembership.organizationId } })
+    },
+  )
   .get(
     "/profile",
     describeRoute({
