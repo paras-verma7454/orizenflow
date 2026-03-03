@@ -46,6 +46,7 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379
+      - INTERNAL_API_URL=http://api:4000
       - WORKER_TYPE=fetch
       - WORKER_CONCURRENCY=20
       - ENABLE_PLAYWRIGHT=false
@@ -66,6 +67,7 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379
+      - INTERNAL_API_URL=http://api:4000
       - WORKER_TYPE=browser
       - WORKER_CONCURRENCY=4
       - MAX_BROWSER_PAGES=4

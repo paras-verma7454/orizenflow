@@ -1724,7 +1724,7 @@ export async function evaluateCandidateJob(
 
   const persistedScore = parsed.score ?? finalScore
 
-  await db
+  const [persistedEvaluation] = await db
     .insert(candidateEvaluations)
     .values({
       applicationId: application.id,
@@ -1760,4 +1760,19 @@ export async function evaluateCandidateJob(
         updatedAt: new Date(),
       },
     })
+    .returning({
+      id: candidateEvaluations.id,
+      applicationId: candidateEvaluations.applicationId,
+      score: candidateEvaluations.score,
+      recommendation: candidateEvaluations.recommendation,
+      updatedAt: candidateEvaluations.updatedAt,
+    })
+
+  console.log("[evaluateCandidateJob] Persisted evaluation row:", {
+    applicationId: persistedEvaluation?.applicationId,
+    evaluationId: persistedEvaluation?.id,
+    score: persistedEvaluation?.score,
+    recommendation: persistedEvaluation?.recommendation,
+    updatedAt: persistedEvaluation?.updatedAt,
+  })
 }
