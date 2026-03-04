@@ -128,6 +128,16 @@ type ResumeStructureMetrics = {
   hasExperienceSections: boolean
 }
 
+type EvaluationMethod = "auto_reject" | "ai_evaluation"
+
+type ProjectSignal = {
+  title: string
+  description: string
+  technologies: string[]
+  hasMetrics: boolean
+  complexity: "high" | "medium" | "low"
+}
+
 const TRACKING_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"]
 const MAX_RESUME_BYTES = 10_000_000
 const GITHUB_MAX_REPOS = 5
@@ -136,6 +146,7 @@ const REQUEST_TIMEOUT_MS = 5000
 const MAX_PROMPT_CHARS = 12_000
 const SARVAM_MAX_OUTPUT_TOKENS = 900
 const RUBRIC_VERSION = "v2-role-adaptive-2026-02"
+const AUTO_REJECT_THRESHOLD = 0.15
 const TECH_REGEX = /\b(react|reactjs|next\.?js|node\.?js|express|typescript|javascript|python|java|c\+\+|go|rust|ruby|php|swift|kotlin|bun|elysia|hono|drizzle|prisma|supabase|postgres(?:ql)?|mysql|mongodb|redis|elasticsearch|cassandra|docker|kubernetes|k8s|aws|gcp|azure|vercel|netlify|heroku|render|railway|tailwind(?:css)?|bootstrap|material-ui|chakra|websockets?|socket\.?io|oauth|jwt|assemblyai|openai|anthropic|gemini|graphql|rest|trpc|grpc|zod|yup|joi|vite|webpack|rollup|turbo(?:repo)?|nx|lerna|ci\/cd|jenkins|github\s*actions|gitlab|vue|angular|svelte|solid|astro|remix|django|flask|fastapi|spring|laravel|rails|figma|sketch|adobe\s*xd|photoshop|illustrator|blender|unity|unreal|godot|git|github|gitlab|bitbucket|jira|confluence|notion|slack|linear|asana|trello|salesforce|hubspot|marketo|segment|mixpanel|amplitude|datadog|sentry|newrelic|prometheus|grafana|kibana|tableau|powerbi|looker|snowflake|databricks|airflow|spark|hadoop|kafka|rabbitmq|celery)\b/gi
 const TECH_STOPWORDS = new Set([
   "The",
@@ -680,6 +691,8 @@ const scrapePortfolio = async (rootUrl: string) => {
   const rootHost = new URL(rootUrl).hostname
 
   while (queue.length > 0 && pages.length < PORTFOLIO_MAX_PAGES) {
+    // Sort queue by URL score (higher priority first)
+    queue.sort((a, b) => scorePortfolioUrl(b) - scorePortfolioUrl(a))
     const next = queue.shift()
     if (!next || visited.has(next)) continue
     visited.add(next)
@@ -738,6 +751,21 @@ const scrapePortfolio = async (rootUrl: string) => {
   }
 
   return { rootUrl, pages }
+}
+
+const scorePortfolioUrl = (url: string): number => {
+  try {
+    const path = new URL(url).pathname.toLowerCase()
+    if (path.includes("/projects")) return 100
+    if (path.includes("/work")) return 90
+    if (path.includes("/case-study") || path.includes("/case-studies")) return 90
+    if (path.includes("/portfolio")) return 80
+    if (path.includes("/github")) return 70
+    if (path.includes("/about") || path.includes("/contact")) return 10
+    return 50
+  } catch {
+    return 50
+  }
 }
 
 const createEvidenceUrls = ({
@@ -938,9 +966,9 @@ const repairJson = (jsonText: string) => {
 }
 
 const recommendationFromScore = (score: number) => {
-  if (score >= 90) return "Strong Hire"
+  if (score >= 80) return "Strong Hire"
   if (score >= 70) return "Hire"
-  if (score >= 60) return "Hold"
+  if (score >= 55) return "Hold"
   return "No Hire"
 }
 
@@ -1061,6 +1089,152 @@ const computeResumeStructureMetrics = (resumeTextExcerpt: string | null): Resume
   }
 }
 
+const PROJECT_SECTION_KEYWORDS = [
+  "projects",
+  "personal projects",
+  "side projects",
+  "technical projects",
+  "open source",
+  "github projects",
+  "portfolio",
+]
+
+const HIGH_COMPLEXITY_KEYWORDS = [
+  "architecture",
+  "microservice",
+  "distributed",
+  "scalable",
+  "real-time",
+  "streaming",
+  "kubernetes",
+  "docker",
+  "aws",
+  "gcp",
+  "azure",
+  "machine learning",
+  "ai",
+  "neural",
+  "pipeline",
+  "etl",
+  "data pipeline",
+  "grpc",
+  "websocket",
+  "graphql",
+]
+
+const extractResumeProjects = (resumeText: string | null): ProjectSignal[] => {
+  if (!resumeText) return []
+
+  const projects: ProjectSignal[] = []
+  const lines = resumeText.split("\n")
+  const text = resumeText.toLowerCase()
+
+  let inProjectSection = false
+  let currentProject: Partial<ProjectSignal> | null = null
+  let currentProjectLines: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const lineLower = line.toLowerCase().trim()
+
+    const isSectionHeader = PROJECT_SECTION_KEYWORDS.some((keyword) => {
+      const headerMatch = line.match(/^(#{1,6}\s+)?([A-Z][A-Za-z\s]+?)(?:\s*[-:]|)$/)
+      return headerMatch && lineLower.includes(keyword)
+    })
+
+    if (isSectionHeader && !inProjectSection) {
+      inProjectSection = true
+      continue
+    }
+
+    if (inProjectSection) {
+      const nextLineLower = lines[i + 1]?.toLowerCase().trim() || ""
+      const isNextSection = nextLineLower.match(/^(education|experience|skills|summary|certifications|languages|interests)/)
+
+      if (isNextSection) {
+        if (currentProject && currentProject.title) {
+          const techSet = new Set<string>()
+          const projectText = currentProject.description || ""
+          const allText = [currentProject.title, projectText, currentProjectLines.join(" ")].join(" ")
+
+          const techMatches = allText.match(TECH_REGEX)
+          if (techMatches) {
+            for (const match of techMatches) {
+              const normalized = canonicalizeSkill(match)
+              if (normalized) techSet.add(normalized)
+            }
+          }
+
+          const hasMetrics = /\d+%|\$\d+[\d,]*|\d+x|\d+\s+(users?|customers?|requests?|views?|performance|speed|improvement)/i.test(
+            currentProjectLines.join(" ")
+          )
+
+          const complexityScore = HIGH_COMPLEXITY_KEYWORDS.filter((kw) => allText.toLowerCase().includes(kw)).length
+          const hasManyTech = techSet.size >= 3
+          const complexity: "high" | "medium" | "low" =
+            (complexityScore >= 2 && hasMetrics) || (complexityScore >= 3) ? "high" : complexityScore >= 1 ? "medium" : "low"
+
+          projects.push({
+            title: currentProject.title,
+            description: currentProject.description || currentProjectLines.slice(0, 2).join(" "),
+            technologies: [...techSet],
+            hasMetrics,
+            complexity,
+          })
+        }
+        inProjectSection = false
+        currentProject = null
+        currentProjectLines = []
+        continue
+      }
+
+      const bulletMatch = line.match(/^[-•*]\s*(.+)/)
+      if (bulletMatch) {
+        if (!currentProject) {
+          currentProject = { title: bulletMatch[1].slice(0, 100), description: "", technologies: [], hasMetrics: false, complexity: "low" }
+        } else {
+          currentProjectLines.push(bulletMatch[1])
+        }
+      } else if (line.trim() && currentProject) {
+        currentProjectLines.push(line.trim())
+      }
+    }
+  }
+
+  if (currentProject && currentProject.title) {
+    const techSet = new Set<string>()
+    const projectText = currentProject.description || ""
+    const allText = [currentProject.title, projectText, currentProjectLines.join(" ")].join(" ")
+
+    const techMatches = allText.match(TECH_REGEX)
+    if (techMatches) {
+      for (const match of techMatches) {
+        const normalized = canonicalizeSkill(match)
+        if (normalized) techSet.add(normalized)
+      }
+    }
+
+    const hasMetrics = /\d+%|\$\d+[\d,]*|\d+x|\d+\s+(users?|customers?|requests?|views?|performance|speed|improvement)/i.test(
+      currentProjectLines.join(" ")
+    )
+
+    const complexityScore = HIGH_COMPLEXITY_KEYWORDS.filter((kw) => allText.toLowerCase().includes(kw)).length
+    const hasManyTech = techSet.size >= 3
+    const complexity: "high" | "medium" | "low" =
+      (complexityScore >= 2 && hasMetrics) || (complexityScore >= 3) ? "high" : complexityScore >= 1 ? "medium" : "low"
+
+    projects.push({
+      title: currentProject.title,
+      description: currentProject.description || currentProjectLines.slice(0, 2).join(" "),
+      technologies: [...techSet],
+      hasMetrics,
+      complexity,
+    })
+  }
+
+  return projects.slice(0, 5)
+}
+
 const normalizeSkillLabels = (skills: string[]) => {
   const unique = new Set<string>()
   for (const skill of skills) {
@@ -1160,6 +1334,7 @@ const buildMinimalPrompt = ({
   resumeTextExcerpt,
   skillOverlap,
   resumeStructureMetrics,
+  projectSignals,
 }: {
   roleFamily: RoleFamily
   rubric: RubricDefinition
@@ -1171,25 +1346,34 @@ const buildMinimalPrompt = ({
   resumeTextExcerpt: string | null
   skillOverlap: SkillOverlap
   resumeStructureMetrics: ResumeStructureMetrics
-}) => [
-  "Evaluate this candidate using the strict role-adaptive rubric. Output JSON only.",
-  "Return JSON with this exact structure:",
-  scoreSchema(rubric),
-  `Detected role family: ${roleFamily}`,
-  `Rubric: ${rubric.criteria.map((item) => `${item.key}(0-${item.max})`).join(", ")}.`,
-  "Skills must be concrete tool/platform names only (examples: React, Node.js, AWS, Docker, Figma, Salesforce, HubSpot, Google Analytics, Jira).",
-  "Avoid abstract skill phrases.",
-  roleFamily === "engineering"
-    ? "Do NOT penalize missing formal experience when project/GitHub evidence is strong."
-    : "Do NOT penalize missing GitHub for non-engineering roles.",
-  `Role: ${trimText(jobTitle, 160)}`,
-  `Job: ${trimText(jobDescription, 1400)}`,
-  `Candidate: ${trimText(candidateName, 120)} (${candidateEmail})`,
-  `Cover letter: ${trimText(coverLetter, 500) ?? "N/A"}`,
-  `Resume excerpt: ${trimText(resumeTextExcerpt, 3000) ?? "N/A"}`,
-  `Resume structure: bullets=${resumeStructureMetrics.bulletCount}, quantified=${resumeStructureMetrics.metricCount}, experience_sections=${resumeStructureMetrics.hasExperienceSections ? "Yes" : "No"}`,
-  `Skill overlap with job: ${skillOverlap.matched.length}/${skillOverlap.jobKeywords.length} matched (${Math.round(skillOverlap.ratio * 100)}%)`,
-].join("\n")
+  projectSignals: ProjectSignal[]
+}) => {
+  const strongProjects = projectSignals.filter((p) => p.complexity === "high" && p.hasMetrics)
+  const projectInfo = projectSignals.length > 0
+    ? `Resume projects: ${projectSignals.length} found (${strongProjects.length} strong with metrics/complexity). ${projectSignals.slice(0, 3).map((p) => `${p.title}: ${p.technologies.slice(0, 4).join(", ")}`).join("; ")}`
+    : "Resume projects: None found"
+
+  return [
+    "Evaluate this candidate using the strict role-adaptive rubric. Output JSON only.",
+    "Return JSON with this exact structure:",
+    scoreSchema(rubric),
+    `Detected role family: ${roleFamily}`,
+    `Rubric: ${rubric.criteria.map((item) => `${item.key}(0-${item.max})`).join(", ")}.`,
+    "Skills must be concrete tool/platform names only (examples: React, Node.js, AWS, Docker, Figma, Salesforce, HubSpot, Google Analytics, Jira).",
+    "Avoid abstract skill phrases.",
+    roleFamily === "engineering"
+      ? "Do NOT penalize missing formal experience when project/GitHub evidence is strong."
+      : "Do NOT penalize missing GitHub for non-engineering roles.",
+    `Role: ${trimText(jobTitle, 160)}`,
+    `Job: ${trimText(jobDescription, 1400)}`,
+    `Candidate: ${trimText(candidateName, 120)} (${candidateEmail})`,
+    `Cover letter: ${trimText(coverLetter, 500) ?? "N/A"}`,
+    `Resume excerpt: ${trimText(resumeTextExcerpt, 3000) ?? "N/A"}`,
+    `Resume structure: bullets=${resumeStructureMetrics.bulletCount}, quantified=${resumeStructureMetrics.metricCount}, experience_sections=${resumeStructureMetrics.hasExperienceSections ? "Yes" : "No"}`,
+    projectInfo,
+    `Skill overlap with job: ${skillOverlap.matched.length}/${skillOverlap.jobKeywords.length} matched (${Math.round(skillOverlap.ratio * 100)}%)`,
+  ].join("\n")
+}
 
 const parseAiJson = (content: string, rubric: RubricDefinition, fallbackRoleFamily: RoleFamily): ParsedEvaluation => {
   let cleaned = content.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/, "")
@@ -1286,6 +1470,27 @@ const applyRoleAwareScoreAdjustments = (baseScore: number, roleFamily: RoleFamil
   }
 
   return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+const applyProjectQualityBoost = (
+  baseScore: number,
+  roleFamily: RoleFamily,
+  projectSignals: ProjectSignal[],
+): { score: number; boostApplied: boolean } => {
+  if (roleFamily !== "engineering") {
+    return { score: baseScore, boostApplied: false }
+  }
+
+  const strongProjects = projectSignals.filter((p) => p.complexity === "high" && p.hasMetrics)
+
+  if (strongProjects.length >= 2) {
+    return { score: Math.min(100, baseScore + 8), boostApplied: true }
+  }
+  if (strongProjects.length === 1) {
+    return { score: Math.min(100, baseScore + 4), boostApplied: true }
+  }
+
+  return { score: baseScore, boostApplied: false }
 }
 
 const applyDeterministicCaps = ({
@@ -1417,16 +1622,136 @@ export async function evaluateCandidateJob(
   const githubTarget = evidenceUrls.find((item) => item.kind === "github_profile" || item.kind === "github_repo")
   const portfolioTarget = evidenceUrls.find((item) => item.kind === "portfolio")
 
+  if (resumeIngestion.status !== "PDF_PARSED" && resumeIngestion.status !== "TEXT_PARSED") {
+    failures.push({
+      source: "resume",
+      url: resumeIngestion.canonicalUrl,
+      reason: resumeIngestion.status,
+      transient: false,
+    })
+  }
+
+  const autoRejectRoleFamily = inferRoleFamily(application.jobTitle, application.jobDescription)
+  const autoRejectRubric = getRubric(autoRejectRoleFamily)
+
+  const resumeSkillsInitial = extractAdvancedSkills(trimmedResumeTextExcerpt)
+  const skillEvidenceInitial: SkillEvidence = {
+    resume: resumeSkillsInitial.size > 0 ? toSortedSkillArray(resumeSkillsInitial) : [],
+    github: [],
+    portfolio: [],
+  }
+  const skillOverlapInitial = computeSkillOverlap(application.jobDescription, skillEvidenceInitial)
+
+  if (skillOverlapInitial.ratio < AUTO_REJECT_THRESHOLD) {
+    console.log("[evaluateCandidateJob] Auto-reject: skill overlap too low", {
+      applicationId: application.id,
+      ratio: skillOverlapInitial.ratio,
+      threshold: AUTO_REJECT_THRESHOLD,
+    })
+
+    const autoRejectEvaluation = {
+      roleFamily: autoRejectRoleFamily,
+      rubricVersion: RUBRIC_VERSION,
+      score: 35,
+      recommendation: "No Hire",
+      summary: "Insufficient skill alignment with job requirements",
+      skills: skillEvidenceInitial.resume.slice(0, 10),
+      strengths: [] as string[],
+      weaknesses: ["Minimal overlap with required skills"],
+      scoreBreakdown: autoRejectRubric.criteria.map((c) => ({ key: c.key, label: c.label, score: 0, max: c.max })),
+    }
+
+    const persistedEvidence = {
+      github: null,
+      portfolio: null,
+      failures,
+      usedUrls: evidenceUrls,
+      extractedResumeLinks,
+      resumeTextExcerpt: trimmedResumeTextExcerpt,
+      githubFetchStatus: "none" as GithubFetchStatus,
+      githubUrlProvided: !!application.githubUrl,
+      githubEnriched: false,
+      portfolioContentPages: 0,
+      resumeIngestionStatus: resumeIngestion.status,
+      resumeContentType: resumeIngestion.contentType,
+      resumeSizeBytes: resumeIngestion.sizeBytes,
+      projectSignals: [] as ProjectSignal[],
+      evaluationMeta: {
+        roleFamily: autoRejectRoleFamily,
+        rubricVersion: RUBRIC_VERSION,
+        evidenceIntegrityScore: 20,
+        evidenceIntegrityTier: "low" as const,
+        capRulesApplied: [] as string[],
+        projectBoostApplied: false,
+        autoRejected: true,
+        autoRejectReason: "LOW_SKILL_OVERLAP",
+      },
+    }
+
+    await db
+      .insert(candidateEvaluations)
+      .values({
+        applicationId: application.id,
+        jobId: application.jobId,
+        organizationId: application.organizationId,
+        model: "sarvam",
+        score: autoRejectEvaluation.score,
+        status: "completed",
+        evaluationMethod: "auto_reject",
+        skillsJson: JSON.stringify(autoRejectEvaluation.skills),
+        resumeTextExcerpt: trimmedResumeTextExcerpt,
+        summary: autoRejectEvaluation.summary,
+        strengthsJson: JSON.stringify(autoRejectEvaluation.strengths),
+        weaknessesJson: JSON.stringify(autoRejectEvaluation.weaknesses),
+        recommendation: autoRejectEvaluation.recommendation,
+        evidenceJson: JSON.stringify(persistedEvidence),
+        aiResponseJson: JSON.stringify(autoRejectEvaluation),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: candidateEvaluations.applicationId,
+        set: {
+          jobId: application.jobId,
+          organizationId: application.organizationId,
+          model: "sarvam",
+          score: autoRejectEvaluation.score,
+          status: "completed",
+          evaluationMethod: "auto_reject",
+          skillsJson: JSON.stringify(autoRejectEvaluation.skills),
+          resumeTextExcerpt: trimmedResumeTextExcerpt,
+          summary: autoRejectEvaluation.summary,
+          strengthsJson: JSON.stringify(autoRejectEvaluation.strengths),
+          weaknessesJson: JSON.stringify(autoRejectEvaluation.weaknesses),
+          recommendation: autoRejectEvaluation.recommendation,
+          evidenceJson: JSON.stringify(persistedEvidence),
+          aiResponseJson: JSON.stringify(autoRejectEvaluation),
+          updatedAt: new Date(),
+        },
+      })
+
+    console.log("[evaluateCandidateJob] Auto-reject persisted:", {
+      applicationId: application.id,
+      score: autoRejectEvaluation.score,
+      recommendation: autoRejectEvaluation.recommendation,
+    })
+    return
+  }
+
   let github: EnrichmentResult["github"] = null
   let portfolio: EnrichmentResult["portfolio"] = null
   let githubFetchStatus: GithubFetchStatus = githubTarget ? "failed" : "none"
 
-  if (options.enableEvidenceScraping && githubTarget) {
-    try {
-      github = await retryOnce(() => scrapeGithub(githubTarget.normalizedUrl, options.githubToken))
+  if (options.enableEvidenceScraping) {
+    const [githubResult, portfolioResult] = await Promise.allSettled([
+      githubTarget ? retryOnce(() => scrapeGithub(githubTarget.normalizedUrl, options.githubToken)) : Promise.resolve(null),
+      portfolioTarget ? retryOnce(() => scrapePortfolio(portfolioTarget.normalizedUrl)) : Promise.resolve(null),
+    ])
+
+    if (githubResult.status === "fulfilled" && githubResult.value) {
+      github = githubResult.value
       githubFetchStatus = "success"
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "GITHUB_SCRAPE_FAILED"
+    } else if (githubResult.status === "rejected" && githubTarget) {
+      const reason = githubResult.reason instanceof Error ? githubResult.reason.message : "GITHUB_SCRAPE_FAILED"
       if (reason.includes("403")) githubFetchStatus = "403"
       else if (reason.includes("429")) githubFetchStatus = "rate_limited"
       else if (reason.includes("FETCH") || reason.includes("NETWORK")) githubFetchStatus = "network_error"
@@ -1438,16 +1763,14 @@ export async function evaluateCandidateJob(
         transient: githubFetchStatus !== "403",
       })
     }
-  }
 
-  if (options.enableEvidenceScraping && portfolioTarget) {
-    try {
-      portfolio = await retryOnce(() => scrapePortfolio(portfolioTarget.normalizedUrl))
-    } catch (error) {
+    if (portfolioResult.status === "fulfilled" && portfolioResult.value) {
+      portfolio = portfolioResult.value
+    } else if (portfolioResult.status === "rejected" && portfolioTarget) {
       failures.push({
         source: "portfolio",
         url: portfolioTarget.normalizedUrl,
-        reason: error instanceof Error ? error.message : "PORTFOLIO_SCRAPE_FAILED",
+        reason: portfolioResult.reason instanceof Error ? portfolioResult.reason.message : "PORTFOLIO_SCRAPE_FAILED",
         transient: true,
       })
     }
@@ -1455,14 +1778,13 @@ export async function evaluateCandidateJob(
 
   const portfolioContentPages = portfolio?.pages.filter((page) => page.textSnippet.trim().length > 0).length ?? 0
 
-  if (resumeIngestion.status !== "PDF_PARSED" && resumeIngestion.status !== "TEXT_PARSED") {
-    failures.push({
-      source: "resume",
-      url: resumeIngestion.canonicalUrl,
-      reason: resumeIngestion.status,
-      transient: false,
-    })
-  }
+  const extractedProjects = extractResumeProjects(trimmedResumeTextExcerpt)
+  console.log("[evaluateCandidateJob] Extracted resume projects:", {
+    applicationId: application.id,
+    projectCount: extractedProjects.length,
+    strongProjects: extractedProjects.filter((p) => p.complexity === "high" && p.hasMetrics).length,
+    projects: extractedProjects.map((p) => ({ title: p.title, complexity: p.complexity, hasMetrics: p.hasMetrics })),
+  })
 
   const enrichment: EnrichmentResult = {
     github,
@@ -1536,6 +1858,7 @@ export async function evaluateCandidateJob(
     resumeTextExcerpt: trimmedResumeTextExcerpt,
     skillOverlap,
     resumeStructureMetrics,
+    projectSignals: extractedProjects,
   })
 
   const parseRetryAfterMs = (error: unknown) => {
@@ -1712,26 +2035,39 @@ export async function evaluateCandidateJob(
     portfolioContentPages,
   })
 
+  const { score: scoreAfterProjectBoost, boostApplied: projectBoostApplied } = applyProjectQualityBoost(
+    parsed.score ?? finalScore,
+    roleFamily,
+    extractedProjects,
+  )
+  parsed.score = scoreAfterProjectBoost
+  parsed.recommendation = normalizeRecommendation(parsed.recommendation, scoreAfterProjectBoost)
+
   const persistedEvidence = {
     ...enrichment,
+    projectSignals: extractedProjects,
     evaluationMeta: {
       roleFamily,
       rubricVersion: RUBRIC_VERSION,
       evidenceIntegrityScore: integrity.score,
       evidenceIntegrityTier: integrity.tier,
       capRulesApplied,
+      projectBoostApplied,
+      autoRejected: false,
     },
   }
 
-  const persistedScore = parsed.score ?? finalScore
+  const persistedScore = parsed.score ?? scoreAfterProjectBoost
 
   console.log("[evaluateCandidateJob] Score transition:", {
     applicationId: application.id,
     rawAiScore,
     scoreAfterRoleAdjustments: finalScore,
     scoreAfterDeterministicCaps: parsed.score,
+    scoreAfterProjectBoost: scoreAfterProjectBoost,
     persistedScore,
     capRulesApplied,
+    projectBoostApplied,
     evidenceIntegrityScore: integrity.score,
     evidenceIntegrityTier: integrity.tier,
   })
@@ -1744,6 +2080,8 @@ export async function evaluateCandidateJob(
       organizationId: application.organizationId,
       model: "sarvam",
       score: persistedScore,
+      status: "completed",
+      evaluationMethod: "ai_evaluation",
       skillsJson: JSON.stringify(parsed.skills),
       resumeTextExcerpt: trimmedResumeTextExcerpt,
       summary: parsed.summary,
@@ -1761,6 +2099,8 @@ export async function evaluateCandidateJob(
         organizationId: application.organizationId,
         model: "sarvam",
         score: persistedScore,
+        status: "completed",
+        evaluationMethod: "ai_evaluation",
         skillsJson: JSON.stringify(parsed.skills),
         resumeTextExcerpt: trimmedResumeTextExcerpt,
         summary: parsed.summary,

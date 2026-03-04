@@ -71,6 +71,13 @@
       "when": 1772279069133,
       "tag": "0009_military_ma_gnuci",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772621237943,
+      "tag": "0010_motionless_manta",
+      "breakpoints": true
     }
   ]
 }

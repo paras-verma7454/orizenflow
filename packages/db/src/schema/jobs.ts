@@ -69,6 +69,8 @@ export const candidateEvaluations = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     model: text("model").notNull().default("sarvam"),
     score: integer("score"),
+    status: text("status").notNull().default("pending"), // pending|processing|completed|failed
+    evaluationMethod: text("evaluation_method"), // auto_reject|ai_evaluation
     skillsJson: text("skills_json"),
     resumeTextExcerpt: text("resume_text_excerpt"),
     summary: text("summary"),
