@@ -73,13 +73,16 @@ export function Footer() {
         <div className="flex flex-col items-center justify-between gap-10 py-14 md:flex-row md:items-start">
           <div className="flex flex-col items-center gap-3 md:items-start">
             <div className="flex items-center gap-3">
-              <div className="h-5 w-1 rounded-full bg-emerald-500" />
+              <div className="h-5 w-1 rounded-full bg-blue-500" />
               <span className="text-xl font-bold tracking-tight text-foreground">
                 Orizen Flow
               </span>
             </div>
             <p className="text-sm font-light italic text-muted-foreground">
               Evidence-based hiring CRM
+            </p>
+            <p className="text-xs text-muted-foreground/70 mt-2">
+              Candidate data is securely processed and never shared.
             </p>
           </div>
 

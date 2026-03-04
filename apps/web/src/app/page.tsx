@@ -129,6 +129,12 @@ export default function Home() {
                 {message}
               </p>
             )}
+            <p className="mt-6 text-sm text-muted-foreground/70 animate-fade-in-up [animation-delay:600ms]">
+              Built for teams hiring engineers and digital roles.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground/50 animate-fade-in-up [animation-delay:700ms]">
+              No spam. Early users get priority access.
+            </p>
           </div>
         </div>
       </section>
@@ -461,6 +467,149 @@ export default function Home() {
 
       <HowItWorksSection />
 
+      {/* Differentiation Section */}
+      <section className="relative border-b border-border bg-white py-32 dark:bg-zinc-950 overflow-hidden">
+        <div className="absolute inset-0 bg-linear-to-b from-white via-neutral-50/30 to-white dark:from-zinc-950 dark:via-zinc-900/30 dark:to-zinc-950" />
+
+        <div className="mx-auto max-w-5xl px-6 relative z-10">
+          <div className="mb-16 text-center max-w-2xl mx-auto">
+            <PointerHighlight
+              containerClassName="mb-6 mx-auto"
+              rectangleClassName="bg-rose-100 dark:bg-rose-900 border-rose-300 dark:border-rose-700 leading-loose"
+              pointerClassName="text-rose-500 h-3 w-3"
+            >
+              <span className="relative z-10 inline-block px-2 text-sm font-bold tracking-wide text-foreground md:text-base font-mono">
+                WHY ORIZENFLOW
+              </span>
+            </PointerHighlight>
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+              Hiring, evolved.
+            </h2>
+            <p className="text-lg text-neutral-600 dark:text-neutral-400">
+              See the difference evidence-based hiring makes.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-neutral-200 dark:border-neutral-800">
+                  <th className="text-left py-6 px-6 text-neutral-500 dark:text-neutral-400 font-medium text-sm">
+                    Capability
+                  </th>
+                  <th className="text-center py-6 px-6 text-neutral-400 dark:text-neutral-500 font-medium text-sm">
+                    Traditional Hiring
+                  </th>
+                  <th className="text-center py-6 px-6 bg-blue-50 dark:bg-blue-900/20 rounded-t-xl">
+                    <span className="text-blue-700 dark:text-blue-400 font-bold text-sm">
+                      OrizenFlow
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-neutral-100 dark:border-neutral-800/50">
+                  <td className="py-5 px-6 text-neutral-700 dark:text-neutral-300 font-medium">
+                    Candidate Evidence
+                  </td>
+                  <td className="py-5 px-6 text-center text-neutral-500 dark:text-neutral-400">
+                    Resume only
+                  </td>
+                  <td className="py-5 px-6 text-center bg-blue-50/50 dark:bg-blue-900/10">
+                    <span className="inline-flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-semibold text-sm">
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Resume + GitHub + Portfolio
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-neutral-100 dark:border-neutral-800/50">
+                  <td className="py-5 px-6 text-neutral-700 dark:text-neutral-300 font-medium">
+                    Screening
+                  </td>
+                  <td className="py-5 px-6 text-center text-neutral-500 dark:text-neutral-400">
+                    Manual review
+                  </td>
+                  <td className="py-5 px-6 text-center bg-blue-50/50 dark:bg-blue-900/10">
+                    <span className="inline-flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-semibold text-sm">
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      AI auto-scored
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-neutral-100 dark:border-neutral-800/50">
+                  <td className="py-5 px-6 text-neutral-700 dark:text-neutral-300 font-medium">
+                    Candidate Ranking
+                  </td>
+                  <td className="py-5 px-6 text-center text-neutral-500 dark:text-neutral-400">
+                    By application date
+                  </td>
+                  <td className="py-5 px-6 text-center bg-blue-50/50 dark:bg-blue-900/10">
+                    <span className="inline-flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-semibold text-sm">
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      By job fit score
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-neutral-100 dark:border-neutral-800/50">
+                  <td className="py-5 px-6 text-neutral-700 dark:text-neutral-300 font-medium">
+                    Insights
+                  </td>
+                  <td className="py-5 px-6 text-center text-neutral-500 dark:text-neutral-400">
+                    Basic contact info
+                  </td>
+                  <td className="py-5 px-6 text-center bg-blue-50/40 dark:bg-blue-900/10 rounded-b-xl">
+                    <span className="inline-flex items-center gap-1.5 text-blue-700 dark:text-blue-400 font-semibold text-sm">
+                      <svg
+                        className="w-4 h-4"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Skills, strengths, weaknesses
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section
         id="features"
         className="relative border-b border-border bg-neutral-50/50 py-32 dark:bg-zinc-950/50 overflow-hidden"
@@ -728,6 +877,123 @@ export default function Home() {
                 </div>
               </div>
             </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* 8-Card Features Section */}
+      <section className="relative border-b border-border bg-neutral-50 py-24 dark:bg-zinc-950">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="mb-16 text-center max-w-3xl mx-auto">
+            <PointerHighlight
+              containerClassName="mb-6 mx-auto"
+              rectangleClassName="bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700 leading-loose"
+              pointerClassName="text-blue-500 h-3 w-3"
+            >
+              <span className="relative z-10 inline-block px-2 text-sm font-bold tracking-wide text-foreground md:text-base font-mono">
+                FEATURES
+              </span>
+            </PointerHighlight>
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+              Everything you need to hire better.
+            </h2>
+            <p className="text-lg text-neutral-600 dark:text-neutral-400">
+              Powerful features designed for technical hiring.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ),
+                title: "Evidence-Based Evaluation",
+                description: "AI scores candidates based on skills, projects, and real-world impact—not just keywords.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                ),
+                title: "Resume Parsing",
+                description: "Automatically extract skills, experience, and education from any resume format.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                ),
+                title: "AI Job Descriptions",
+                description: "Generate compelling job descriptions that attract the right candidates.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                ),
+                title: "Candidate Intelligence",
+                description: "Enrich profiles with GitHub, LinkedIn, and portfolio data automatically.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                ),
+                title: "Hiring Recommendations",
+                description: "Get AI-powered suggestions on who to interview, reject, or advance.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                ),
+                title: "Candidate Ranking",
+                description: "Sort and filter candidates by match score, skills, and experience.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                ),
+                title: "CSV Export",
+                description: "Export candidate data and scores to CSV for external analysis.",
+              },
+              {
+                icon: (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                ),
+                title: "Frictionless Apply",
+                description: "One-click apply experience that increases candidate conversion rates.",
+              },
+            ].map((feature, index) => (
+              <motion.div
+                key={feature.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.05 }}
+                className="group relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm transition-all hover:shadow-md hover:border-neutral-300 dark:border-neutral-800 dark:bg-zinc-900"
+              >
+                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                  {feature.icon}
+                </div>
+                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                  {feature.description}
+                </p>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
