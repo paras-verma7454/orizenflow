@@ -67,7 +67,7 @@ export default function RootLayout({
             data-website-id="84a24c98-3a01-4b2f-b984-5e790123aee9"
           />
         </head>
-        <body className="min-h-dvh antialiased">
+        <body className="min-h-dvh antialiased" suppressHydrationWarning>
           <InnerProvider>
             <Suspense fallback={null}>
               <Navbar />

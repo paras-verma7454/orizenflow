@@ -272,7 +272,7 @@ export function ApplyForm({
 
   return (
     <form
-      className="space-y-8 rounded-xl bg-white p-6 dark:bg-muted/10 sm:p-8"
+      className={`space-y-8 rounded-xl p-6 sm:p-8 bg-transparent`}
       onSubmit={onSubmit}
     >
       <Script

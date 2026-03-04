@@ -269,6 +269,57 @@ const selectEvaluationQueue = (portfolioUrl: string | null | undefined) => {
 }
 
 export const publicRouter = new Hono()
+    .get("/job/:shortId", async (c) => {
+        const shortId = c.req.param("shortId")
+
+        const [data] = await db
+            .select({
+                id: jobs.id,
+                shortId: jobs.shortId,
+                title: jobs.title,
+                slug: jobs.slug,
+                description: jobs.description,
+                status: jobs.status,
+                jobType: jobs.jobType,
+                location: jobs.location,
+                salaryRange: jobs.salaryRange,
+                questionsJson: jobs.questionsJson,
+                createdAt: jobs.createdAt,
+                organization: {
+                    id: organization.id,
+                    name: organization.name,
+                    slug: organization.slug,
+                    logo: organization.logo,
+                    metadata: organization.metadata,
+                },
+            })
+            .from(jobs)
+            .innerJoin(organization, eq(jobs.organizationId, organization.id))
+            .where(and(eq(jobs.shortId, shortId), ne(jobs.status, "draft")))
+
+        if (!data) {
+            return c.json({ error: { code: "NOT_FOUND", message: "Job not found" } }, 404)
+        }
+
+        const metadata = parseMetadata(data.organization.metadata)
+
+        return c.json({
+            data: {
+                ...data,
+                questions: parseJobQuestions(data.questionsJson),
+                organization: {
+                    id: data.organization.id,
+                    name: data.organization.name,
+                    slug: data.organization.slug,
+                    logo: data.organization.logo,
+                    tagline: typeof metadata.tagline === "string" ? metadata.tagline : null,
+                    about: typeof metadata.about === "string" ? metadata.about : null,
+                    websiteUrl: typeof metadata.websiteUrl === "string" ? metadata.websiteUrl : null,
+                    linkedinUrl: typeof metadata.linkedinUrl === "string" ? metadata.linkedinUrl : null,
+                },
+            },
+        })
+    })
     .get("/:orgSlug/jobs", async (c) => {
         const orgSlug = c.req.param("orgSlug")
 

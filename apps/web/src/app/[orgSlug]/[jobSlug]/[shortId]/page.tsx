@@ -319,9 +319,9 @@ export default async function PublicJobApplyPage({
                   `${job.organization.name} is hiring for this role. Apply to share your profile and relevant experience.`}
               </p>
               <div className="space-y-2 pt-1">
-                <div className="text-sm">
-                  <span className="text-foreground/80">Website: </span>
-                  {websiteUrl ? (
+                {websiteUrl ? (
+                  <div className="text-sm">
+                    <span className="text-foreground/80">Website: </span>
                     <a
                       href={websiteUrl}
                       target="_blank"
@@ -330,16 +330,12 @@ export default async function PublicJobApplyPage({
                     >
                       {websiteUrl}
                     </a>
-                  ) : (
-                    <span>Not provided</span>
-                  )}
-                </div>
-                <div className="text-sm">
-                  <span className="text-foreground/80 inline-flex items-center gap-1">
-                    <AnimatedLinkedin className="size-4" size={16} />
-                    LinkedIn:
-                  </span>{" "}
-                  {linkedinUrl ? (
+                  </div>
+                ) : null}
+                {linkedinUrl ? (
+                  <div className="text-sm flex items-center gap-1">
+                    {/* <AnimatedLinkedin className="size-4" /> */}
+                    <span className="text-foreground/80">LinkedIn: </span>
                     <a
                       href={linkedinUrl}
                       target="_blank"
@@ -348,10 +344,8 @@ export default async function PublicJobApplyPage({
                     >
                       {linkedinUrl}
                     </a>
-                  ) : (
-                    <span>Not provided</span>
-                  )}
-                </div>
+                  </div>
+                ) : null}
               </div>
             </CardContent>
           </Card>

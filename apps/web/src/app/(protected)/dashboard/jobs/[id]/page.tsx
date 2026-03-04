@@ -72,13 +72,71 @@ interface Job {
   jobType: string;
   location: string | null;
   salaryRange: string | null;
+  questionsJson: string | null;
+  questions?: unknown;
   createdAt: string;
   updatedAt: string;
 }
 
+type JobQuestion = {
+  id: string;
+  prompt: string;
+  required: boolean;
+};
+
 interface OrganizationProfile {
   slug: string;
 }
+
+const parseQuestions = (raw: unknown): JobQuestion[] => {
+  if (!raw) return [];
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const record = item as Record<string, unknown>;
+
+        const id =
+          typeof record.id === "string" && record.id.trim().length > 0
+            ? record.id
+            : crypto.randomUUID();
+
+        const promptSource =
+          typeof record.prompt === "string"
+            ? record.prompt
+            : typeof record.question === "string"
+              ? record.question
+              : typeof record.text === "string"
+                ? record.text
+                : null;
+
+        if (!promptSource) return null;
+
+        const prompt = promptSource.trim();
+        if (!prompt) return null;
+
+        return {
+          id,
+          prompt,
+          required:
+            typeof record.required === "boolean" ? record.required : false,
+        } satisfies JobQuestion;
+      })
+      .filter((item): item is JobQuestion => item !== null);
+  }
+
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return parseQuestions(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+};
 
 const JOB_STATUSES = [
   { value: "draft", label: "Draft", description: "Not yet published" },
@@ -174,13 +232,13 @@ export default function JobDetailPage() {
   };
 
   const handleCopyEmbedCode = async () => {
-    if (!organizationProfile?.slug || !job?.id) {
+    if (!job?.shortId) {
       toast.error("Embed code is not available yet");
       return;
     }
 
-    const embedUrl = `${config.app.url}/${organizationProfile.slug}/${job.slug}/${job.shortId}?embed=1`;
-    const snippet = `<iframe src="${embedUrl}" title="Apply for ${job.title}" width="100%" height="980" frameborder="0" loading="lazy"></iframe>`;
+    const embedUrl = `${config.app.url}/embed/${job.shortId}`;
+    const snippet = `<iframe data-orizen-src="${embedUrl}" width="100%" height="420" frameborder="0" marginheight="0" marginwidth="0" scrolling="no" title="Apply for ${job.title}"></iframe>\n<script src="${config.app.url}/widgets/embed.js"></script>`;
 
     try {
       await navigator.clipboard.writeText(snippet);
@@ -256,12 +314,9 @@ export default function JobDetailPage() {
   }
 
   const jobType = JOB_TYPES[job.jobType];
-  const jobShortId = job.id.replace(/-/g, "").slice(-6).toUpperCase();
-  const embedUrl = organizationProfile?.slug
-    ? `${config.app.url}/${organizationProfile.slug}/${job.slug}/${job.shortId}?embed=1`
-    : "";
-  const embedSnippet = organizationProfile?.slug
-    ? `<iframe src="${embedUrl}" title="Apply for ${job.title}" width="100%" height="980" frameborder="0" loading="lazy"></iframe>`
+  const embedUrl = job?.shortId ? `${config.app.url}/embed/${job.shortId}` : "";
+  const embedSnippet = job?.shortId
+    ? `<iframe data-orizen-src="${embedUrl}" width="100%" height="420" frameborder="0" marginheight="0" marginwidth="0" scrolling="no" title="Apply for ${job.title}"></iframe>\n<script src="${config.app.url}/widgets/embed.js"></script>`
     : "";
 
   return (
@@ -465,17 +520,60 @@ export default function JobDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 max-w-3xl lg:grid-cols-[1fr_280px] lg:max-w-5xl">
-        <Card>
-          <CardHeader>
-            <h2 className="text-base font-medium">Job Description</h2>
-          </CardHeader>
-          <Separator />
-          <CardContent className="pt-4">
-            <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-              {job.description}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <h2 className="text-base font-medium">Job Description</h2>
+            </CardHeader>
+            <Separator />
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                {job.description}
+              </div>
+            </CardContent>
+          </Card>
+
+          {(() => {
+            const questions = parseQuestions(
+              job.questions ?? job.questionsJson,
+            );
+            if (questions.length === 0) return null;
+
+            return (
+              <Card>
+                <CardHeader>
+                  <h2 className="text-base font-medium">Screening Questions</h2>
+                </CardHeader>
+                <Separator />
+                <CardContent className="pt-4">
+                  <div className="space-y-3">
+                    {questions.map((question, index) => (
+                      <div
+                        key={question.id}
+                        className="flex items-start gap-2 text-sm"
+                      >
+                        <span className="text-muted-foreground font-medium shrink-0">
+                          {index + 1}.
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-foreground">{question.prompt}</p>
+                          {question.required && (
+                            <Badge
+                              variant="secondary"
+                              className="mt-1 text-[10px] h-4 px-1.5"
+                            >
+                              Required
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+        </div>
 
         <div className="flex flex-col gap-4">
           <Card>

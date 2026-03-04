@@ -130,8 +130,9 @@ export default async function OrgJobsPage({
                   {organization.name}
                 </Highlight>
               </h1>
-              <p className="mt-2 text-lg text-slate-600 dark:text-slate-400">
-                Careers
+              <p className="mt-2 text-lg text-slate-600 dark:text-slate-400
+                                  4">
+ 4               Careers border
               </p>
             </div>
             {organization.logo && (

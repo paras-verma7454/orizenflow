@@ -38,6 +38,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -62,6 +63,7 @@ interface Job {
   location: string | null;
   salaryRange: string | null;
   questionsJson: string | null;
+  questions?: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,29 +118,54 @@ const formSchema = z.object({
   ),
 });
 
-const parseQuestions = (raw: string | null): JobQuestion[] => {
+const parseQuestions = (raw: unknown): JobQuestion[] => {
   if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((item): item is JobQuestion => {
-        if (!item || typeof item !== "object") return false;
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
         const record = item as Record<string, unknown>;
-        return (
-          typeof record.id === "string" &&
-          typeof record.prompt === "string" &&
-          typeof record.required === "boolean"
-        );
+
+        const id =
+          typeof record.id === "string" && record.id.trim().length > 0
+            ? record.id
+            : crypto.randomUUID();
+
+        const promptSource =
+          typeof record.prompt === "string"
+            ? record.prompt
+            : typeof record.question === "string"
+              ? record.question
+              : typeof record.text === "string"
+                ? record.text
+                : null;
+
+        if (!promptSource) return null;
+
+        const prompt = promptSource.trim();
+        if (!prompt) return null;
+
+        return {
+          id,
+          prompt,
+          required:
+            typeof record.required === "boolean" ? record.required : false,
+        } satisfies JobQuestion;
       })
-      .map((item) => ({
-        id: item.id,
-        prompt: item.prompt,
-        required: item.required,
-      }));
-  } catch {
-    return [];
+      .filter((item): item is JobQuestion => item !== null);
   }
+
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return parseQuestions(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
 };
 
 const normalizeQuestions = (
@@ -171,7 +198,7 @@ function EditJobForm({ job }: { job: Job }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [newQuestionPrompt, setNewQuestionPrompt] = useState("");
-  const initialQuestions = parseQuestions(job.questionsJson);
+  const initialQuestions = parseQuestions(job.questions ?? job.questionsJson);
 
   const mutation = useMutation({
     mutationFn: async (values: z.infer<typeof formSchema>) => {
@@ -554,19 +581,24 @@ function EditJobForm({ job }: { job: Job }) {
                                 Remove
                               </Button>
                             </div>
-                            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <input
-                                type="checkbox"
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`required-${question.id}`}
                                 checked={question.required}
-                                onChange={(event) =>
+                                onCheckedChange={(checked: boolean) =>
                                   field.replaceValue(index, {
                                     ...question,
-                                    required: event.target.checked,
+                                    required: checked,
                                   })
                                 }
                               />
-                              Required question
-                            </label>
+                              <label
+                                htmlFor={`required-${question.id}`}
+                                className="text-sm text-muted-foreground cursor-pointer"
+                              >
+                                Required question
+                              </label>
+                            </div>
                           </div>
                         ))}
                       </div>

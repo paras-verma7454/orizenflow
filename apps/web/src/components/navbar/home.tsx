@@ -38,6 +38,7 @@ export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
 
   if (pathname?.startsWith("/dashboard")) return null;
+  if (pathname?.startsWith("/embed")) return null;
   if (searchParams?.get("embed") === "1") return null;
 
   return (

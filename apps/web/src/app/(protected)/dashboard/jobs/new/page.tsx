@@ -40,6 +40,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -547,19 +548,24 @@ export default function CreateJobPage() {
                                 Remove
                               </Button>
                             </div>
-                            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <input
-                                type="checkbox"
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`required-${question.id}`}
                                 checked={question.required}
-                                onChange={(event) =>
+                                onCheckedChange={(checked: boolean) =>
                                   field.replaceValue(index, {
                                     ...question,
-                                    required: event.target.checked,
+                                    required: checked,
                                   })
                                 }
                               />
-                              Required question
-                            </label>
+                              <label
+                                htmlFor={`required-${question.id}`}
+                                className="text-sm text-muted-foreground cursor-pointer"
+                              >
+                                Required question
+                              </label>
+                            </div>
                           </div>
                         ))}
                       </div>
