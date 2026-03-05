@@ -3,14 +3,12 @@
 import { Footer } from "@/components/Footer";
 import { HowItWorksSection } from "@/components/HowItWorksSection";
 import { ProductPreviewSection } from "@/components/ProductPreviewSection";
-import { Waitlist } from "@/components/Waitlist";
 import { PointerHighlight } from "@/components/ui/pointer-highlight";
 import React from "react";
-import { apiClient } from "@/lib/api/client";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { TypewriterEffect } from "@/components/ui/typewriter-effect";
-import { MovingBorderInput } from "@/components/ui/moving-border-input";
 import { Highlight } from "@/components/ui/hero-highlight";
 import { Boxes } from "@/components/ui/background-boxes";
 
@@ -40,37 +38,6 @@ const problemCards = [
 ];
 
 export default function Home() {
-  const [email, setEmail] = React.useState("");
-  const [status, setStatus] = React.useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
-  const [message, setMessage] = React.useState("");
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-
-    setStatus("loading");
-    try {
-      const res = await apiClient.waitlist.join.$post({
-        json: { email },
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setStatus("success");
-        setMessage(data.message || "You're on the waitlist.");
-        setEmail("");
-      } else {
-        setStatus("error");
-        setMessage(data.message || "Failed to join waitlist");
-      }
-    } catch {
-      setStatus("error");
-      setMessage("Connection error. Please try again.");
-    }
-  };
-
   return (
     <main className="flex min-h-screen flex-col bg-background">
       <section className="relative w-full border-b border-border bg-background pt-20 md:pt-24 overflow-hidden">
@@ -96,44 +63,31 @@ export default function Home() {
               in minutes, not weeks.
             </p>
 
-            <form
-              onSubmit={handleSubmit}
-              className="mx-auto flex w-full max-w-xl flex-col gap-3 sm:flex-row animate-fade-in-up [animation-delay:400ms]"
-            >
-              <MovingBorderInput
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setEmail(e.target.value)
-                }
-                required
-                containerClassName="flex-grow" // To make it take full width in sm:flex-row
-                inputClassName="h-14 rounded-full" // Keep rounded-full for the inner input
-                movingBorderDuration={6000}
-                borderRadius="9999px"
-              />
+            <div className="mx-auto flex flex-col sm:flex-row gap-3 justify-center items-center animate-fade-in-up [animation-delay:400ms]">
+              <Link
+                href="/dashboard"
+                className="h-14 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-10 font-semibold tracking-tight transition-all hover:bg-zinc-800 hover:dark:bg-zinc-100 shadow-xl"
+              >
+                Start Hiring Free
+              </Link>
               <Button
-                type="submit"
                 size="xl"
-                disabled={status === "loading"}
-                className="h-14 rounded-full bg-foreground px-10 font-semibold tracking-tight text-background transition-all hover:bg-foreground/90"
+                variant="outline"
+                className="h-14 rounded-full px-10 font-semibold tracking-tight border-2 border-zinc-200 dark:border-zinc-700 hover:!bg-zinc-100 hover:dark:!bg-zinc-800"
+                onClick={() =>
+                  document
+                    .getElementById("how-it-works")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
               >
-                {status === "loading" ? "Joining..." : "Join Waitlist"}
+                See How It Works
               </Button>
-            </form>
-            {(status === "success" || status === "error") && (
-              <p
-                className={`mt-4 text-sm font-medium animate-fade-in ${status === "success" ? "text-accent" : "text-destructive"}`}
-              >
-                {message}
-              </p>
-            )}
+            </div>
             <p className="mt-6 text-sm text-muted-foreground/70 animate-fade-in-up [animation-delay:600ms]">
               Built for teams hiring engineers and digital roles.
             </p>
             <p className="mt-2 text-xs text-muted-foreground/50 animate-fade-in-up [animation-delay:700ms]">
-              No spam. Early users get priority access.
+              No credit card required. Start in minutes.
             </p>
           </div>
         </div>
@@ -906,75 +860,163 @@ export default function Home() {
             {[
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 ),
                 title: "Evidence-Based Evaluation",
-                description: "AI scores candidates based on skills, projects, and real-world impact—not just keywords.",
+                description:
+                  "AI scores candidates based on skills, projects, and real-world impact—not just keywords.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
                   </svg>
                 ),
                 title: "Resume Parsing",
-                description: "Automatically extract skills, experience, and education from any resume format.",
+                description:
+                  "Automatically extract skills, experience, and education from any resume format.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
                   </svg>
                 ),
                 title: "AI Job Descriptions",
-                description: "Generate compelling job descriptions that attract the right candidates.",
+                description:
+                  "Generate compelling job descriptions that attract the right candidates.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
                   </svg>
                 ),
                 title: "Candidate Intelligence",
-                description: "Enrich profiles with GitHub, LinkedIn, and portfolio data automatically.",
+                description:
+                  "Enrich profiles with GitHub, LinkedIn, and portfolio data automatically.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    />
                   </svg>
                 ),
                 title: "Hiring Recommendations",
-                description: "Get AI-powered suggestions on who to interview, reject, or advance.",
+                description:
+                  "Get AI-powered suggestions on who to interview, reject, or advance.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+                    />
                   </svg>
                 ),
                 title: "Candidate Ranking",
-                description: "Sort and filter candidates by match score, skills, and experience.",
+                description:
+                  "Sort and filter candidates by match score, skills, and experience.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
                   </svg>
                 ),
                 title: "CSV Export",
-                description: "Export candidate data and scores to CSV for external analysis.",
+                description:
+                  "Export candidate data and scores to CSV for external analysis.",
               },
               {
                 icon: (
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                    />
                   </svg>
                 ),
                 title: "Frictionless Apply",
-                description: "One-click apply experience that increases candidate conversion rates.",
+                description:
+                  "One-click apply experience that increases candidate conversion rates.",
               },
             ].map((feature, index) => (
               <motion.div
@@ -1195,7 +1237,6 @@ export default function Home() {
 
       <ProductPreviewSection />
 
-      <Waitlist />
       <Footer />
     </main>
   );

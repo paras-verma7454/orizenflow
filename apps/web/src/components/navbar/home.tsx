@@ -54,18 +54,6 @@ export function Navbar() {
           {/* Desktop Navigation */}
           {!isPublicJobsRoute ? (
             <nav className="hidden items-center gap-8 lg:flex">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground font-medium"
-                onClick={() =>
-                  document
-                    .getElementById("waitlist")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
-              >
-                Join Waitlist
-              </Button>
             </nav>
           ) : null}
 
@@ -118,18 +106,6 @@ export function Navbar() {
                     </SheetTitle>
                   </SheetHeader>
                   <nav className="mt-8 flex flex-col gap-4 px-4">
-                    <Button
-                      variant="ghost"
-                      className="justify-start px-0 text-lg hover:bg-transparent"
-                      onClick={() => {
-                        setIsOpen(false);
-                        document
-                          .getElementById("waitlist")
-                          ?.scrollIntoView({ behavior: "smooth" });
-                      }}
-                    >
-                      Join Waitlist
-                    </Button>
                     <div className="pt-4 border-t border-border flex items-center justify-between">
                       <span className="text-sm text-muted-foreground font-medium">
                         Theme

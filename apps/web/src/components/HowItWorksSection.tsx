@@ -47,7 +47,7 @@ export function HowItWorksSection() {
             pointerClassName="text-amber-500 h-3 w-3"
           >
             <span className="relative z-10 inline-block px-2 text-sm font-bold tracking-widest uppercase text-foreground md:text-base">
-              The Process
+              HOW IT WORKS
             </span>
           </PointerHighlight>
           <h2 className="text-balance font-serif text-5xl font-medium tracking-tight text-neutral-900 dark:text-neutral-50 md:text-7xl">
