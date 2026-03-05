@@ -73,7 +73,11 @@ export function Navbar() {
                   )}
                 </Button>
               ) : (
-                <Access />
+                <Access>
+                  <Button className="w-24 cursor-pointer" variant="outline">
+                    Login
+                  </Button>
+                </Access>
               )
             ) : null}
 

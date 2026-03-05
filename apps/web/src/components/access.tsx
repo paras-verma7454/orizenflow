@@ -32,7 +32,7 @@ const formSchema = z.object({
   email: z.email({ message: "Please enter a valid email address." }),
 });
 
-export function Access() {
+export function Access({ children }: { children: React.ReactNode }) {
   if (config.features.authDisabled) return null;
 
   const githubRef = useRef<GithubIconHandle>(null);
@@ -68,11 +68,7 @@ export function Access() {
 
   return (
     <Dialog>
-      <DialogTrigger
-        render={<Button className="w-24 cursor-pointer" variant="outline" />}
-      >
-        Login
-      </DialogTrigger>
+      <DialogTrigger>{children}</DialogTrigger>
       <DialogContent className="max-w-md sm:max-w-md" initialFocus={false}>
         <DialogHeader className="sr-only">
           <DialogTitle className="text-center">Sign in/up</DialogTitle>

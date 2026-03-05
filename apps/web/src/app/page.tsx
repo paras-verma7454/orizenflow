@@ -3,7 +3,7 @@
 import { Footer } from "@/components/Footer";
 import { HowItWorksSection } from "@/components/HowItWorksSection";
 import { ProductPreviewSection } from "@/components/ProductPreviewSection";
-import { PointerHighlight } from "@/components/ui/pointer-highlight";
+import { StartHiringButton } from "@/components/start-hiring-button";
 import React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { TypewriterEffect } from "@/components/ui/typewriter-effect";
 import { Highlight } from "@/components/ui/hero-highlight";
 import { Boxes } from "@/components/ui/background-boxes";
+import { PointerHighlight } from "@/components/ui/pointer-highlight";
 
 const words = [
   { text: "Post jobs," },
@@ -64,12 +65,7 @@ export default function Home() {
             </p>
 
             <div className="mx-auto flex flex-col sm:flex-row gap-3 justify-center items-center animate-fade-in-up [animation-delay:400ms]">
-              <Link
-                href="/dashboard"
-                className="h-14 inline-flex items-center justify-center rounded-full bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-10 font-semibold tracking-tight transition-all hover:bg-zinc-800 hover:dark:bg-zinc-100 shadow-xl"
-              >
-                Start Hiring Free
-              </Link>
+              <StartHiringButton />
               <Button
                 size="xl"
                 variant="outline"
