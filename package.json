@@ -41,6 +41,7 @@
     "globby": "catalog:",
     "lefthook": "catalog:",
     "lint-staged": "catalog:",
+    "next": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "tsx": "catalog:",
