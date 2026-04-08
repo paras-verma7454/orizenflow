@@ -8,6 +8,7 @@ import { describeRoute, resolver } from "hono-openapi"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
 
+import { parseAiJsonLoose } from "@/lib/ai"
 import { generateShortId } from "@/lib/utils"
 import { authMiddleware } from "@/middlewares"
 
@@ -202,8 +203,8 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
       const prompt = [
         "Generate a high-quality job posting from the provided hiring context.",
         "Return valid JSON only (no markdown block, no explanation) using this exact shape:",
-        '{"title":"...","description":"...","salaryRange":"..."}',
-        "Description must include sections: About the Role, Responsibilities, Requirements, Nice to Have, Benefits.",
+        '<Format>{"title":"...","description":"...","salaryRange":"..."} </Format>',
+        "Description must include sections: About the Role, Responsibilities, Requirements, Nice to Have, Benefits. new line before each section. Use markdown bullet points for lists.",
         "Do not use markdown heading syntax like #, ##, or ### anywhere in the description.",
         "Keep title concise and don't mention job location in title . The salaryRange should be a string like '$100k - $150k/yr' or '₹10k/month  or 12LPA' based on job location if location is not given use USA standard and market-standard based on the job location and type if present like if it's a india job can't give USA standard salary etc.",
         "",
@@ -218,11 +219,12 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
 
       const completion = await sarvamClient.chat.completions({
         temperature: 0.4,
+        wiki_grounding: true,
         messages: [
           {
             role: "system",
             content:
-              "You are an expert technical recruiter. You must return valid JSON only, matching the exact requested schema.",
+              "You are an expert technical recruiter. You must return valid JSON only, matching the exact requested schema and never include a <think> block.",
           },
           {
             role: "user",
@@ -236,11 +238,8 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
         return c.json({ error: { code: "AI_ERROR", message: "No response from AI model" } }, 502)
       }
 
-      const cleaned = content.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/, "")
-      let parsedJson: unknown
-      try {
-        parsedJson = JSON.parse(cleaned)
-      } catch {
+      const parsedJson = parseAiJsonLoose(content)
+      if (parsedJson === null) {
         return c.json({ error: { code: "AI_PARSE_ERROR", message: "Failed to parse AI response" } }, 502)
       }
 

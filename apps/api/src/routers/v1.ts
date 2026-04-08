@@ -10,6 +10,7 @@ import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
 
 import { authMiddleware } from "@/middlewares"
+import { parseAiJsonLoose } from "@/lib/ai"
 import { candidateEvaluations, db, jobApplications, jobs, user } from "@packages/db"
 
 const CANDIDATE_STATUSES = ["applied", "screening", "interview", "offer", "hired", "rejected"] as const
@@ -819,13 +820,11 @@ const { data } = await response.json()`,
       })
 
       const content = completion.choices?.[0]?.message?.content ?? ""
-      const cleaned = content.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/, "")
-      let parsedJson: unknown
-      try {
-        parsedJson = JSON.parse(cleaned)
-      } catch {
+      const parsedJson = parseAiJsonLoose(content)
+      if (parsedJson === null) {
         return c.json({ data: candidates.slice(0, limit) })
       }
+
       const parsed = z.object({ ids: z.array(z.string()) }).safeParse(parsedJson)
       if (!parsed.success) return c.json({ data: candidates.slice(0, limit) })
 

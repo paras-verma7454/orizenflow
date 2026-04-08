@@ -147,6 +147,7 @@
   },
   "dependencies": {
     "@takumi-rs/image-response": "^0.70.3",
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "sarvamai": "^1.1.6"
   }
 }

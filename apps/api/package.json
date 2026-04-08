@@ -27,7 +27,7 @@
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "hono-rate-limiter": "catalog:",
-    "sarvamai": "catalog:",
+    "sarvamai": "^1.1.6",
     "zod": "catalog:"
   },
   "devDependencies": {
