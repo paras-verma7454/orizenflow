@@ -145,6 +145,7 @@ const PORTFOLIO_MAX_PAGES = 6
 const REQUEST_TIMEOUT_MS = 5000
 const MAX_PROMPT_CHARS = 12_000
 const SARVAM_MAX_OUTPUT_TOKENS = 900
+const SARVAM_DEFAULT_MODEL = "sarvam-30b"
 const RUBRIC_VERSION = "v2-role-adaptive-2026-02"
 const AUTO_REJECT_THRESHOLD = 0.15
 const TECH_REGEX = /\b(react|reactjs|next\.?js|node\.?js|express|typescript|javascript|python|java|c\+\+|go|rust|ruby|php|swift|kotlin|bun|elysia|hono|drizzle|prisma|supabase|postgres(?:ql)?|mysql|mongodb|redis|elasticsearch|cassandra|docker|kubernetes|k8s|aws|gcp|azure|vercel|netlify|heroku|render|railway|tailwind(?:css)?|bootstrap|material-ui|chakra|websockets?|socket\.?io|oauth|jwt|assemblyai|openai|anthropic|gemini|graphql|rest|trpc|grpc|zod|yup|joi|vite|webpack|rollup|turbo(?:repo)?|nx|lerna|ci\/cd|jenkins|github\s*actions|gitlab|vue|angular|svelte|solid|astro|remix|django|flask|fastapi|spring|laravel|rails|figma|sketch|adobe\s*xd|photoshop|illustrator|blender|unity|unreal|godot|git|github|gitlab|bitbucket|jira|confluence|notion|slack|linear|asana|trello|salesforce|hubspot|marketo|segment|mixpanel|amplitude|datadog|sentry|newrelic|prometheus|grafana|kibana|tableau|powerbi|looker|snowflake|databricks|airflow|spark|hadoop|kafka|rabbitmq|celery)\b/gi
@@ -1579,6 +1580,7 @@ export async function evaluateCandidateJob(
   payload: CandidateJobPayload,
   options: {
     sarvamApiKey: string
+    sarvamModel?: string
     githubToken?: string
     enableEvidenceScraping: boolean
     llmMaxRetries: number
@@ -1609,6 +1611,7 @@ export async function evaluateCandidateJob(
     )
 
   if (!application) throw new Error("APPLICATION_NOT_FOUND")
+  const selectedModel = options.sarvamModel ?? SARVAM_DEFAULT_MODEL
 
   const failures: EvidenceFailure[] = []
   const resumeIngestion = await extractResumeTextExcerpt(application.resumeUrl)
@@ -1694,7 +1697,7 @@ export async function evaluateCandidateJob(
         applicationId: application.id,
         jobId: application.jobId,
         organizationId: application.organizationId,
-        model: "sarvam",
+        model: selectedModel,
         score: autoRejectEvaluation.score,
         status: "completed",
         evaluationMethod: "auto_reject",
@@ -1713,7 +1716,7 @@ export async function evaluateCandidateJob(
         set: {
           jobId: application.jobId,
           organizationId: application.organizationId,
-          model: "sarvam",
+          model: selectedModel,
           score: autoRejectEvaluation.score,
           status: "completed",
           evaluationMethod: "auto_reject",
@@ -1882,6 +1885,7 @@ export async function evaluateCandidateJob(
 
   const runCompletion = async (content: string) =>
     sarvamClient.chat.completions({
+      model: selectedModel,
       temperature: 0,
       top_p: 1,
       wiki_grounding: false,
@@ -1897,10 +1901,11 @@ export async function evaluateCandidateJob(
           content,
         },
       ],
-    })
+    } as unknown as Parameters<typeof sarvamClient.chat.completions>[0])
 
   const runStrictJsonRecovery = async (context: string) =>
     sarvamClient.chat.completions({
+      model: selectedModel,
       temperature: 0,
       top_p: 1,
       wiki_grounding: false,
@@ -1925,7 +1930,7 @@ export async function evaluateCandidateJob(
           ].join("\n"),
         },
       ],
-    })
+    } as unknown as Parameters<typeof sarvamClient.chat.completions>[0])
 
   let completion: Awaited<ReturnType<typeof runCompletion>>
   let attempt = 0
@@ -2078,7 +2083,7 @@ export async function evaluateCandidateJob(
       applicationId: application.id,
       jobId: application.jobId,
       organizationId: application.organizationId,
-      model: "sarvam",
+      model: selectedModel,
       score: persistedScore,
       status: "completed",
       evaluationMethod: "ai_evaluation",
@@ -2097,7 +2102,7 @@ export async function evaluateCandidateJob(
       set: {
         jobId: application.jobId,
         organizationId: application.organizationId,
-        model: "sarvam",
+        model: selectedModel,
         score: persistedScore,
         status: "completed",
         evaluationMethod: "ai_evaluation",

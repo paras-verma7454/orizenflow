@@ -22,7 +22,7 @@
     "drizzle-orm": "catalog:",
     "pdf-parse": "catalog:",
     "playwright": "catalog:",
-    "sarvamai": "catalog:",
+    "sarvamai": "^1.1.6",
     "turndown": "catalog:"
   },
   "devDependencies": {

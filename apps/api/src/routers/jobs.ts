@@ -218,6 +218,7 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
       ].filter(line => line !== undefined).join("\n")
 
       const completion = await sarvamClient.chat.completions({
+        model: "sarvam-30b",
         temperature: 0.4,
         wiki_grounding: true,
         messages: [

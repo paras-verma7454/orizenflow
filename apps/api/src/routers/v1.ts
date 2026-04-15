@@ -806,6 +806,7 @@ const { data } = await response.json()`,
       ].join("\n")
 
       const completion = await sarvamClient.chat.completions({
+         model: "sarvam-30b",
         temperature: 0,
         messages: [
           {

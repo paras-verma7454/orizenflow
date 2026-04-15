@@ -137,7 +137,7 @@
         "drizzle-orm": "catalog:",
         "pdf-parse": "catalog:",
         "playwright": "catalog:",
-        "sarvamai": "catalog:",
+        "sarvamai": "^1.1.6",
         "turndown": "catalog:",
       },
       "devDependencies": {
@@ -308,7 +308,7 @@
     "remark-gfm": "^4.0.1",
     "remotion": "^4.0.429",
     "resend": "^6.9.2",
-    "sarvamai": "^1.1.4",
+    "sarvamai": "^1.1.6",
     "shadcn": "^3.8.4",
     "shiki": "^3.22.0",
     "sonner": "^2.0.7",
@@ -2777,8 +2777,6 @@
     "@takumi-rs/image-response/@takumi-rs/wasm": ["@takumi-rs/wasm@0.70.3", "", {}, "sha512-ZLggdqwyGSVp9VVaZy8wSSXuFfFZE/wd18uHj4Ux6fo7qekmN37L9iBSKhTlTwfwW/nLCE6iU/bnxD8VfdbxWw=="],
 
     "@web/next/@takumi-rs/image-response": ["@takumi-rs/image-response@0.68.2", "", { "dependencies": { "@takumi-rs/core": "0.68.2", "@takumi-rs/helpers": "0.68.2", "@takumi-rs/wasm": "0.68.2" } }, "sha512-52PgnmTNvnGY5pW2jUWuHRm7I0n3GjtTBy3wTHjPSJdztepwmvZCdh6zUsfCNkTRg3FafUyD+q7jYspX4S7lDg=="],
-
-    "@worker/bullmq/sarvamai": ["sarvamai@1.1.4", "", { "dependencies": { "ws": "^8.16.0" } }, "sha512-WQ3yRStLcxeILL+UVQMKQzBwznM45gYGg5HUIlRhBp6qihQ6WfiEuMTjL7ywiaCxALe4PjXjyL05s3+nvgMr7g=="],
 
     "accepts/mime-types": ["mime-types@3.0.2", "", { "dependencies": { "mime-db": "^1.54.0" } }, "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A=="],
 
