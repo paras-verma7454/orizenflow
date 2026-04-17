@@ -120,6 +120,29 @@ const turnstileActionForSource = (source: "public_link" | "embedded_iframe" | un
     return source === "embedded_iframe" ? "embedded_apply" : "public_apply"
 }
 
+const TURNSTILE_TEST_SECRET_KEYS = new Set([
+    "1x0000000000000000000000000000000AA",
+    "2x0000000000000000000000000000000AA",
+    "3x0000000000000000000000000000000AA",
+])
+
+const TURNSTILE_RELAXED_CHECK_ENVIRONMENTS = new Set(["local", "development", "test"])
+
+const isTurnstileTestSecretKey = (secret: string | undefined) => {
+    if (!secret) return false
+    return TURNSTILE_TEST_SECRET_KEYS.has(secret)
+}
+
+const shouldRelaxTurnstileChecks = () => {
+    return TURNSTILE_RELAXED_CHECK_ENVIRONMENTS.has(env.NODE_ENV) && isTurnstileTestSecretKey(env.TURNSTILE_SECRET_KEY)
+}
+
+const turnstileChecksAreRelaxed = shouldRelaxTurnstileChecks()
+
+if (turnstileChecksAreRelaxed) {
+    console.warn("[public] Turnstile validation is running in relaxed test-key mode")
+}
+
 const verifyTurnstileToken = async (
     captchaToken: string,
     ip: string | null,
@@ -166,11 +189,11 @@ const verifyTurnstileToken = async (
             return { ok: false as const, errorCodes: json?.["error-codes"] ?? ["invalid-input-response"] }
         }
 
-        if (json.action !== expectedAction) {
+        if (!turnstileChecksAreRelaxed && json.action !== expectedAction) {
             return { ok: false as const, errorCodes: ["action-mismatch"] }
         }
 
-        if (expectedHostname && json.hostname !== expectedHostname) {
+        if (!turnstileChecksAreRelaxed && expectedHostname && json.hostname !== expectedHostname) {
             return { ok: false as const, errorCodes: ["hostname-mismatch"] }
         }
 

@@ -201,50 +201,69 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
       const data = c.req.valid("json")
 
       const prompt = [
-        "Generate a high-quality job posting from the provided hiring context.",
-        "Return valid JSON only (no markdown block, no explanation) using this exact shape:",
-        '<Format>{"title":"...","description":"...","salaryRange":"..."} </Format>',
-        "Description must include sections: About the Role, Responsibilities, Requirements, Nice to Have, Benefits. new line before each section. Use markdown bullet points for lists.",
-        "Do not use markdown heading syntax like #, ##, or ### anywhere in the description.",
-        "Keep title concise and don't mention job location in title . The salaryRange should be a string like '$100k - $150k/yr' or '₹10k/month  or 12LPA' based on job location if location is not given use USA standard and market-standard based on the job location and type if present like if it's a india job can't give USA standard salary etc.",
+        "Create a professional job description based on the provided hiring context.",
+        "Your response MUST be a valid JSON object with the following fields:",
+        '- "title": A concise job title.',
+        '- "description": A detailed description in Markdown (lists, etc.).',
+        '- "salaryRange": A realistic salary range string.',
         "",
-        "IMPORTANT: Consider these work arrangement details:",
-        `- Work Type: ${data.jobType ?? "not specified"} - ${data.jobType === "remote" ? "Fully remote position" : data.jobType === "hybrid" ? "Mix of remote and office work" : "On-site at office location"}`,
-        `- Location: ${data.location ?? "not specified"}${data.location ? " - Mention this prominently in the description" : ""}`,
-        data.salaryRange ? `- Salary Range: ${data.salaryRange}` : "",
+        "Description Rules:",
+        "1. Include sections: About the Role, Responsibilities, Requirements, Nice to Have, Benefits.",
+        "2. Put a blank line before each section title.",
+        "3. Use bullet points for lists.",
+        "4. DO NOT use markdown headings (no # symbols). Just use bold for titles.",
         "",
-        "Hiring Context:",
+        "Field Specifics:",
+        "- title: Do NOT include the location in the title.",
+        `- salaryRange: Use local standards for ${data.location ?? "the requested location"}. Format like '$100k - $150k/yr' or '₹10k/month'.`,
+        "",
+        "Work Details:",
+        `- Type: ${data.jobType ?? "specified in context"}`,
+        `- Location: ${data.location ?? "specified in context"}`,
+        data.salaryRange ? `- Requested Range: ${data.salaryRange}` : "",
+        "",
+        "HIRING CONTEXT:",
         data.context,
-      ].filter(line => line !== undefined).join("\n")
+      ].filter(Boolean).join("\n")
 
-      const completion = await sarvamClient.chat.completions({
-        model: "sarvam-30b",
-        temperature: 0.4,
-        wiki_grounding: true,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert technical recruiter. You must return valid JSON only, matching the exact requested schema and never include a <think> block.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      })
+      let completion;
+      try {
+        completion = await sarvamClient.chat.completions({
+          model: "sarvam-30b",
+          temperature: 0.3,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert recruiter. You MUST return ONLY a valid JSON object. No conversational text, no <think> blocks, no markdown code fences.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+        })
+      } catch (error) {
+        console.error("Sarvam AI Connection Error:", error)
+        return c.json({ error: { code: "AI_ERROR", message: "Failed to connect to AI service" } }, 502)
+      }
 
       const content = completion.choices?.[0]?.message?.content
+      
       if (!content) {
-        return c.json({ error: { code: "AI_ERROR", message: "No response from AI model" } }, 502)
+        console.error("Sarvam AI Empty Response:", JSON.stringify(completion, null, 2))
+        return c.json({ error: { code: "AI_ERROR", message: "AI model returned an empty response" } }, 502)
       }
+
+      // console.log("AI Response Content:", content)
 
       const parsedJson = parseAiJsonLoose(content)
       if (parsedJson === null) {
-        return c.json({ error: { code: "AI_PARSE_ERROR", message: "Failed to parse AI response" } }, 502)
+        console.error("AI Parse Error. Content was:", content)
+        return c.json({ error: { code: "AI_PARSE_ERROR", message: "Failed to parse AI response into JSON" } }, 502)
       }
 
-      const parsed = z
+      const result = z
         .object({
           title: z.string().min(1),
           description: z.string().min(1),
@@ -252,13 +271,15 @@ export const jobsRouter = new Hono<{ Variables: Session }>()
         })
         .safeParse(parsedJson)
 
-      if (!parsed.success) {
-        return c.json({ error: { code: "AI_PARSE_ERROR", message: "Failed to parse AI response" } }, 502)
+      if (!result.success) {
+        console.error("AI Schema Validation Error:", result.error.format(), "Content was:", content)
+        return c.json({ error: { code: "AI_PARSE_ERROR", message: "AI response did not match expected schema" } }, 502)
       }
 
       const sanitized = {
-        ...parsed.data,
-        description: stripMarkdownHeadingHashes(parsed.data.description),
+        title: result.data.title,
+        salaryRange: result.data.salaryRange,
+        description: stripMarkdownHeadingHashes(result.data.description),
       }
 
       return c.json({ data: sanitized })

@@ -903,6 +903,7 @@ const { data } = await response.json()`,
       }
 
       const candidateEvaluationQueue = selectEvaluationQueue(application.portfolioUrl)
+
       if (!candidateEvaluationQueue) {
         console.error("[queue] Review queue unavailable - Redis not configured")
         return c.json(
@@ -929,6 +930,7 @@ const { data } = await response.json()`,
             jobId: force ? `eval-${application.id}-${Date.now()}` : `eval-${application.id}`,
           },
         )
+
       } catch (error) {
         const reason = error instanceof Error ? error.message : "QUEUE_ERROR"
         console.error("[queue] enqueue single review failed:", reason, error)

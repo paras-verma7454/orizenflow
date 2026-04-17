@@ -19,6 +19,10 @@ const createWorkerForType = env.WORKER_TYPE === "browser"
   ? createCandidateEvaluationBrowserWorker
   : createCandidateEvaluationFetchWorker
 
+const queueName = env.WORKER_TYPE === "browser"
+  ? "candidate-evaluation-browser"
+  : "candidate-evaluation-fetch"
+
 try {
   worker = createWorkerForType(
     env.REDIS_URL,

@@ -462,6 +462,25 @@ const parsePdfText = async (bytes: Uint8Array) => {
 
 const ingestResumeText = async (resumeUrl: string) => {
   const canonical = toCanonicalResumeUrl(resumeUrl)
+  const isDriveUrl = canonical.driveFileId !== null
+
+  if (isDriveUrl) {
+    try {
+      const scraped = await smartScrape(canonical.url)
+      if (scraped.content && scraped.method !== "failed") {
+        const text = scraped.content.slice(0, 12000)
+        return {
+          text,
+          status: "PDF_PARSED" as ResumeIngestionStatus,
+          contentType: "text/plain",
+          sizeBytes: text.length,
+          canonicalUrl: canonical.url,
+        }
+      }
+    } catch {
+      console.warn("[ingestResumeText] smartScrape failed for drive URL:", canonical.url)
+    }
+  }
 
   try {
     const res = await fetchWithTimeout(canonical.url, { redirect: "follow" })
@@ -809,6 +828,15 @@ const extractResumeTextExcerpt = async (resumeUrl: string) => {
 const trimText = (value: string | null | undefined, max = 600) => {
   if (!value) return null
   return value.replace(/\s+/g, " ").trim().slice(0, max)
+}
+
+const sanitizeText = (text: string | null | undefined): string | null => {
+  if (!text) return null
+  return text.replace(/\0/g, "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+}
+
+const sanitizeJsonForDb = (json: unknown): string => {
+  return sanitizeText(JSON.stringify(json)) ?? "{}"
 }
 
 const compactEnrichment = (enrichment: EnrichmentResult) => {
@@ -1634,112 +1662,6 @@ export async function evaluateCandidateJob(
     })
   }
 
-  const autoRejectRoleFamily = inferRoleFamily(application.jobTitle, application.jobDescription)
-  const autoRejectRubric = getRubric(autoRejectRoleFamily)
-
-  const resumeSkillsInitial = extractAdvancedSkills(trimmedResumeTextExcerpt)
-  const skillEvidenceInitial: SkillEvidence = {
-    resume: resumeSkillsInitial.size > 0 ? toSortedSkillArray(resumeSkillsInitial) : [],
-    github: [],
-    portfolio: [],
-  }
-  const skillOverlapInitial = computeSkillOverlap(application.jobDescription, skillEvidenceInitial)
-
-  if (skillOverlapInitial.ratio < AUTO_REJECT_THRESHOLD) {
-    console.log("[evaluateCandidateJob] Auto-reject: skill overlap too low", {
-      applicationId: application.id,
-      ratio: skillOverlapInitial.ratio,
-      threshold: AUTO_REJECT_THRESHOLD,
-    })
-
-    const autoRejectEvaluation = {
-      roleFamily: autoRejectRoleFamily,
-      rubricVersion: RUBRIC_VERSION,
-      score: 35,
-      recommendation: "No Hire",
-      summary: "Insufficient skill alignment with job requirements",
-      skills: skillEvidenceInitial.resume.slice(0, 10),
-      strengths: [] as string[],
-      weaknesses: ["Minimal overlap with required skills"],
-      scoreBreakdown: autoRejectRubric.criteria.map((c) => ({ key: c.key, label: c.label, score: 0, max: c.max })),
-    }
-
-    const persistedEvidence = {
-      github: null,
-      portfolio: null,
-      failures,
-      usedUrls: evidenceUrls,
-      extractedResumeLinks,
-      resumeTextExcerpt: trimmedResumeTextExcerpt,
-      githubFetchStatus: "none" as GithubFetchStatus,
-      githubUrlProvided: !!application.githubUrl,
-      githubEnriched: false,
-      portfolioContentPages: 0,
-      resumeIngestionStatus: resumeIngestion.status,
-      resumeContentType: resumeIngestion.contentType,
-      resumeSizeBytes: resumeIngestion.sizeBytes,
-      projectSignals: [] as ProjectSignal[],
-      evaluationMeta: {
-        roleFamily: autoRejectRoleFamily,
-        rubricVersion: RUBRIC_VERSION,
-        evidenceIntegrityScore: 20,
-        evidenceIntegrityTier: "low" as const,
-        capRulesApplied: [] as string[],
-        projectBoostApplied: false,
-        autoRejected: true,
-        autoRejectReason: "LOW_SKILL_OVERLAP",
-      },
-    }
-
-    await db
-      .insert(candidateEvaluations)
-      .values({
-        applicationId: application.id,
-        jobId: application.jobId,
-        organizationId: application.organizationId,
-        model: selectedModel,
-        score: autoRejectEvaluation.score,
-        status: "completed",
-        evaluationMethod: "auto_reject",
-        skillsJson: JSON.stringify(autoRejectEvaluation.skills),
-        resumeTextExcerpt: trimmedResumeTextExcerpt,
-        summary: autoRejectEvaluation.summary,
-        strengthsJson: JSON.stringify(autoRejectEvaluation.strengths),
-        weaknessesJson: JSON.stringify(autoRejectEvaluation.weaknesses),
-        recommendation: autoRejectEvaluation.recommendation,
-        evidenceJson: JSON.stringify(persistedEvidence),
-        aiResponseJson: JSON.stringify(autoRejectEvaluation),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: candidateEvaluations.applicationId,
-        set: {
-          jobId: application.jobId,
-          organizationId: application.organizationId,
-          model: selectedModel,
-          score: autoRejectEvaluation.score,
-          status: "completed",
-          evaluationMethod: "auto_reject",
-          skillsJson: JSON.stringify(autoRejectEvaluation.skills),
-          resumeTextExcerpt: trimmedResumeTextExcerpt,
-          summary: autoRejectEvaluation.summary,
-          strengthsJson: JSON.stringify(autoRejectEvaluation.strengths),
-          weaknessesJson: JSON.stringify(autoRejectEvaluation.weaknesses),
-          recommendation: autoRejectEvaluation.recommendation,
-          evidenceJson: JSON.stringify(persistedEvidence),
-          aiResponseJson: JSON.stringify(autoRejectEvaluation),
-          updatedAt: new Date(),
-        },
-      })
-
-    console.log("[evaluateCandidateJob] Auto-reject persisted:", {
-      applicationId: application.id,
-      score: autoRejectEvaluation.score,
-      recommendation: autoRejectEvaluation.recommendation,
-    })
-    return
-  }
-
   let github: EnrichmentResult["github"] = null
   let portfolio: EnrichmentResult["portfolio"] = null
   let githubFetchStatus: GithubFetchStatus = githubTarget ? "failed" : "none"
@@ -1812,6 +1734,98 @@ export async function evaluateCandidateJob(
   const skillEvidence = collectSkillEvidence(enrichment, trimmedResumeTextExcerpt)
   const skillOverlap = computeSkillOverlap(application.jobDescription, skillEvidence)
   const resumeStructureMetrics = computeResumeStructureMetrics(trimmedResumeTextExcerpt)
+
+  const autoRejectRoleFamily = roleFamily
+  const autoRejectRubric = rubric
+
+  if (skillOverlap.ratio < AUTO_REJECT_THRESHOLD) {
+    console.log("[evaluateCandidateJob] Auto-reject: skill overlap too low", {
+      applicationId: application.id,
+      ratio: skillOverlap.ratio,
+      threshold: AUTO_REJECT_THRESHOLD,
+      resumeFetchStatus: resumeIngestion.status,
+      githubEnriched: !!github,
+      portfolioContentPages,
+      candidateSkills: skillEvidence,
+    })
+
+    const autoRejectEvaluation = {
+      roleFamily: autoRejectRoleFamily,
+      rubricVersion: RUBRIC_VERSION,
+      score: 35,
+      recommendation: "No Hire",
+      summary: "Insufficient skill alignment with job requirements",
+      skills: [...skillEvidence.resume, ...skillEvidence.github, ...skillEvidence.portfolio].slice(0, 10),
+      strengths: [] as string[],
+      weaknesses: ["Minimal overlap with required skills"],
+      scoreBreakdown: autoRejectRubric.criteria.map((c) => ({ key: c.key, label: c.label, score: 0, max: c.max })),
+    }
+
+    const persistedEvidence = {
+      ...enrichment,
+      projectSignals: extractedProjects,
+      evaluationMeta: {
+        roleFamily: autoRejectRoleFamily,
+        rubricVersion: RUBRIC_VERSION,
+        evidenceIntegrityScore: 20,
+        evidenceIntegrityTier: "low" as const,
+        capRulesApplied: [] as string[],
+        projectBoostApplied: false,
+        autoRejected: true,
+        autoRejectReason: "LOW_SKILL_OVERLAP",
+      },
+    }
+
+    await db
+      .insert(candidateEvaluations)
+      .values({
+        applicationId: application.id,
+        jobId: application.jobId,
+        organizationId: application.organizationId,
+        model: selectedModel,
+        score: autoRejectEvaluation.score,
+        status: "completed",
+        evaluationMethod: "auto_reject",
+        skillsJson: sanitizeJsonForDb(autoRejectEvaluation.skills),
+        resumeTextExcerpt: sanitizeText(trimmedResumeTextExcerpt),
+        summary: sanitizeText(autoRejectEvaluation.summary),
+        strengthsJson: sanitizeJsonForDb(autoRejectEvaluation.strengths),
+        weaknessesJson: sanitizeJsonForDb(autoRejectEvaluation.weaknesses),
+        recommendation: sanitizeText(autoRejectEvaluation.recommendation),
+        evidenceJson: sanitizeJsonForDb(persistedEvidence),
+        aiResponseJson: sanitizeJsonForDb(autoRejectEvaluation),
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: candidateEvaluations.applicationId,
+        set: {
+          jobId: application.jobId,
+          organizationId: application.organizationId,
+          model: selectedModel,
+          score: autoRejectEvaluation.score,
+          status: "completed",
+          evaluationMethod: "auto_reject",
+          skillsJson: sanitizeJsonForDb(autoRejectEvaluation.skills),
+          resumeTextExcerpt: sanitizeText(trimmedResumeTextExcerpt),
+          summary: sanitizeText(autoRejectEvaluation.summary),
+          strengthsJson: sanitizeJsonForDb(autoRejectEvaluation.strengths),
+          weaknessesJson: sanitizeJsonForDb(autoRejectEvaluation.weaknesses),
+          recommendation: sanitizeText(autoRejectEvaluation.recommendation),
+          evidenceJson: sanitizeJsonForDb(persistedEvidence),
+          aiResponseJson: sanitizeJsonForDb(autoRejectEvaluation),
+          updatedAt: new Date(),
+        },
+      })
+
+    console.log("[evaluateCandidateJob] Auto-reject persisted (after enrichment):", {
+      applicationId: application.id,
+      score: autoRejectEvaluation.score,
+      recommendation: autoRejectEvaluation.recommendation,
+      githubEnriched: !!github,
+      portfolioContentPages,
+    })
+    return
+  }
 
   const integrity = computeEvidenceIntegrityScore({
     resumeIngestionStatus: resumeIngestion.status,
@@ -1956,7 +1970,8 @@ export async function evaluateCandidateJob(
     }
   }
 
-  const content = completion.choices?.[0]?.message?.content
+  const response = completion as { choices?: Array<{ message?: { content?: string | null } }> }
+  const content = response.choices?.[0]?.message?.content
   if (!content) throw new Error("AI_EMPTY_RESPONSE")
 
   let parsed: ParsedEvaluation
@@ -1966,7 +1981,8 @@ export async function evaluateCandidateJob(
       applicationId: application.id,
     })
     const recoveryCompletion = await runStrictJsonRecovery(minimalPrompt)
-    const recoveryContent = recoveryCompletion.choices?.[0]?.message?.content
+    const recoveryResponse = recoveryCompletion as { choices?: Array<{ message?: { content?: string | null } }> }
+    const recoveryContent = recoveryResponse.choices?.[0]?.message?.content
     if (!recoveryContent) throw new Error("AI_EMPTY_RECOVERY_RESPONSE")
     parsed = parseAiJson(recoveryContent, rubric, roleFamily)
   } else {
@@ -1995,7 +2011,8 @@ export async function evaluateCandidateJob(
         })
 
         const recoveryCompletion = await runStrictJsonRecovery(minimalPrompt)
-        const recoveryContent = recoveryCompletion.choices?.[0]?.message?.content
+        const recoveryResp = recoveryCompletion as { choices?: Array<{ message?: { content?: string | null } }> }
+        const recoveryContent = recoveryResp.choices?.[0]?.message?.content
         if (!recoveryContent) throw new Error("AI_EMPTY_RECOVERY_RESPONSE")
 
         console.log("[evaluateCandidateJob] Recovery AI response received:", {
@@ -2087,14 +2104,14 @@ export async function evaluateCandidateJob(
       score: persistedScore,
       status: "completed",
       evaluationMethod: "ai_evaluation",
-      skillsJson: JSON.stringify(parsed.skills),
-      resumeTextExcerpt: trimmedResumeTextExcerpt,
-      summary: parsed.summary,
-      strengthsJson: JSON.stringify(parsed.strengths),
-      weaknessesJson: JSON.stringify(parsed.weaknesses),
-      recommendation: parsed.recommendation,
-      evidenceJson: JSON.stringify(persistedEvidence),
-      aiResponseJson: JSON.stringify(parsed),
+      skillsJson: sanitizeJsonForDb(parsed.skills),
+      resumeTextExcerpt: sanitizeText(trimmedResumeTextExcerpt),
+      summary: sanitizeText(parsed.summary),
+      strengthsJson: sanitizeJsonForDb(parsed.strengths),
+      weaknessesJson: sanitizeJsonForDb(parsed.weaknesses),
+      recommendation: sanitizeText(parsed.recommendation),
+      evidenceJson: sanitizeJsonForDb(persistedEvidence),
+      aiResponseJson: sanitizeJsonForDb(parsed),
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
@@ -2106,14 +2123,14 @@ export async function evaluateCandidateJob(
         score: persistedScore,
         status: "completed",
         evaluationMethod: "ai_evaluation",
-        skillsJson: JSON.stringify(parsed.skills),
-        resumeTextExcerpt: trimmedResumeTextExcerpt,
-        summary: parsed.summary,
-        strengthsJson: JSON.stringify(parsed.strengths),
-        weaknessesJson: JSON.stringify(parsed.weaknesses),
-        recommendation: parsed.recommendation,
-        evidenceJson: JSON.stringify(persistedEvidence),
-        aiResponseJson: JSON.stringify(parsed),
+        skillsJson: sanitizeJsonForDb(parsed.skills),
+        resumeTextExcerpt: sanitizeText(trimmedResumeTextExcerpt),
+        summary: sanitizeText(parsed.summary),
+        strengthsJson: sanitizeJsonForDb(parsed.strengths),
+        weaknessesJson: sanitizeJsonForDb(parsed.weaknesses),
+        recommendation: sanitizeText(parsed.recommendation),
+        evidenceJson: sanitizeJsonForDb(persistedEvidence),
+        aiResponseJson: sanitizeJsonForDb(parsed),
         updatedAt: new Date(),
       },
     })
