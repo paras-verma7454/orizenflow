@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm"
 import { SarvamAIClient } from "sarvamai"
 import { extractLinksByType, htmlToMarkdownWithCleanup, filterMarkdownForSignal } from "./html-to-markdown"
 import { smartScrape } from "./smart-scraper"
+import * as cheerio from "cheerio"
 
 type CandidateJobPayload = {
   applicationId: string
@@ -464,38 +465,15 @@ const ingestResumeText = async (resumeUrl: string) => {
   const canonical = toCanonicalResumeUrl(resumeUrl)
   const isDriveUrl = canonical.driveFileId !== null
 
-  if (isDriveUrl) {
-    try {
-      const scraped = await smartScrape(canonical.url)
-      if (scraped.content && scraped.method !== "failed") {
-        const text = scraped.content.slice(0, 12000)
-        return {
-          text,
-          status: "PDF_PARSED" as ResumeIngestionStatus,
-          contentType: "text/plain",
-          sizeBytes: text.length,
-          canonicalUrl: canonical.url,
-        }
-      }
-    } catch {
-      console.warn("[ingestResumeText] smartScrape failed for drive URL:", canonical.url)
-    }
-  }
-
   try {
     const res = await fetchWithTimeout(canonical.url, { redirect: "follow" })
     if (!res.ok || !res.body) {
-      return {
-        text: null,
-        status: "FETCH_FAILED" as ResumeIngestionStatus,
-        contentType: null,
-        sizeBytes: null,
-        canonicalUrl: canonical.url,
-      }
+      throw new Error("FETCH_FAILED")
     }
 
     const contentType = (res.headers.get("content-type") ?? "").toLowerCase()
     const contentLength = Number(res.headers.get("content-length") ?? 0)
+
     if (Number.isFinite(contentLength) && contentLength > MAX_RESUME_BYTES) {
       return {
         text: null,
@@ -529,12 +507,45 @@ const ingestResumeText = async (resumeUrl: string) => {
     const merged = new Uint8Array(received)
     let offset = 0
     for (const chunk of chunks) {
-      const size = Math.min(chunk.length, merged.length - offset)
-      merged.set(chunk.slice(0, size), offset)
-      offset += size
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
     }
 
+    // Check if it's HTML - likely a Drive previewer or login page
     if (contentType.includes("text/html")) {
+      // Fallback to smartScrape for HTML pages (especially for Drive URLs which might be previewers)
+      try {
+        const scraped = await smartScrape(canonical.url)
+        if (scraped.content && scraped.method !== "failed") {
+          // Verify it's not binary soup
+          if (scraped.content.startsWith("%PDF")) {
+            // If smartScrape returned raw PDF soup, it's useless because it's already utf8-mangled.
+            // But we already have the raw bytes in 'merged'! Let's just use those instead.
+            const pdfText = await parsePdfText(merged)
+            if (pdfText) {
+              return {
+                text: pdfText.slice(0, 12000),
+                status: "PDF_PARSED" as ResumeIngestionStatus,
+                contentType: "application/pdf",
+                sizeBytes: merged.length,
+                canonicalUrl: canonical.url,
+              }
+            }
+          }
+
+          const text = scraped.content.slice(0, 12000)
+          return {
+            text,
+            status: "TEXT_PARSED" as ResumeIngestionStatus,
+            contentType: "text/html",
+            sizeBytes: text.length,
+            canonicalUrl: canonical.url,
+          }
+        }
+      } catch {
+        // Fall through to error
+      }
+
       return {
         text: null,
         status: "HTML_VIEWER_BLOCKED" as ResumeIngestionStatus,
@@ -544,38 +555,24 @@ const ingestResumeText = async (resumeUrl: string) => {
       }
     }
 
-    const shouldParsePdf =
-      contentType.includes("application/pdf")
-      || contentType.includes("application/octet-stream")
-      || canonical.driveFileId !== null
+    // Force PDF parsing if it looks like a PDF (starts with %PDF) regardless of content type
+    const isPdfMagic = merged.length > 4 && merged[0] === 0x25 && merged[1] === 0x50 && merged[2] === 0x44 && merged[3] === 0x46
+    const shouldParsePdf = contentType.includes("application/pdf") || contentType.includes("application/octet-stream") || isPdfMagic || isDriveUrl
 
     if (shouldParsePdf) {
       try {
         const pdfText = await parsePdfText(merged)
-        if (!pdfText) {
+        if (pdfText) {
           return {
-            text: null,
-            status: "PDF_PARSE_FAILED" as ResumeIngestionStatus,
+            text: pdfText.slice(0, 12000),
+            status: "PDF_PARSED" as ResumeIngestionStatus,
             contentType,
             sizeBytes: received,
             canonicalUrl: canonical.url,
           }
         }
-        return {
-          text: pdfText.slice(0, 12000),
-          status: "PDF_PARSED" as ResumeIngestionStatus,
-          contentType,
-          sizeBytes: received,
-          canonicalUrl: canonical.url,
-        }
       } catch {
-        return {
-          text: null,
-          status: "PDF_PARSE_FAILED" as ResumeIngestionStatus,
-          contentType,
-          sizeBytes: received,
-          canonicalUrl: canonical.url,
-        }
+        // Fall through
       }
     }
 
@@ -598,6 +595,23 @@ const ingestResumeText = async (resumeUrl: string) => {
       canonicalUrl: canonical.url,
     }
   } catch {
+    // If direct fetch fails, try one last time with smartScrape (maybe it was blocked)
+    try {
+      const scraped = await smartScrape(canonical.url)
+      if (scraped.content && scraped.method !== "failed") {
+        const text = scraped.content.slice(0, 12000)
+        return {
+          text: scraped.content.startsWith("%PDF") ? null : text,
+          status: scraped.content.startsWith("%PDF") ? "PDF_PARSE_FAILED" : ("TEXT_PARSED" as ResumeIngestionStatus),
+          contentType: "text/plain",
+          sizeBytes: text.length,
+          canonicalUrl: canonical.url,
+        }
+      }
+    } catch {
+      // Ignored
+    }
+
     return {
       text: null,
       status: "FETCH_FAILED" as ResumeIngestionStatus,
@@ -628,6 +642,56 @@ const extractAllLinks = (html: string, baseUrl: string): string[] => {
   }
 }
 
+const scrapeGithubHtml = async (url: string) => {
+  const scraped = await smartScrape(url)
+  if (!scraped.content) return null
+
+  // If we got binary soup (PDF) somehow, or it's not HTML, skip
+  if (scraped.content.startsWith("%PDF")) return null
+
+  const $ = cheerio.load(scraped.content)
+  const name = $(".p-name").text().trim() || $(".vcard-fullname").text().trim()
+  const bio = $(".p-note").text().trim() || $(".user-profile-bio").text().trim()
+  const followersStr = $(".Link--secondary:contains('followers')").first().text().replace(/followers/g, "").trim()
+  const followers = parseInt(followersStr.replace(/,/g, "")) || 0
+
+  const topRepos: Array<{
+    name: string
+    url: string
+    stars: number
+    forks: number
+    languages: string[]
+    readmeSnippet?: string
+  }> = []
+
+  // Try to find repositories from the main profile page (pinned or popular)
+  $(".pinned-item-list-item-content, .repo-list-item").each((_, el) => {
+    const repoName = $(el).find("span.repo, a[itemprop='name codeRepository']").text().trim()
+    const repoPath = $(el).find("a.Link, a[itemprop='name codeRepository']").attr("href")
+    if (repoName && repoPath) {
+      topRepos.push({
+        name: repoName,
+        url: repoPath.startsWith("http") ? repoPath : `https://github.com${repoPath}`,
+        stars: parseInt($(el).find(".pinned-item-meta:contains('Star'), .muted-link:contains('Star')").text().trim()) || 0,
+        forks: 0,
+        languages: [],
+      })
+    }
+  })
+
+  return {
+    profile: {
+      login: url.split("/").pop() || "",
+      name: name || undefined,
+      bio: bio || undefined,
+      followers,
+      publicRepos: parseInt($(".UnderlineNav-item:contains('Repositories') .Counter").text().trim()) || 0,
+    },
+    topRepos: topRepos.slice(0, GITHUB_MAX_REPOS),
+    languages: {},
+  }
+}
+
 const buildGithubHeaders = (token?: string) => {
   const headers: HeadersInit = {
     "User-Agent": "OrizenFlowWorker/1.0",
@@ -645,7 +709,13 @@ const scrapeGithub = async (url: string, token?: string) => {
   const headers = buildGithubHeaders(token)
 
   const profileRes = await fetchWithTimeout(`https://api.github.com/users/${owner}`, { headers })
-  if (!profileRes.ok) throw new Error(`GITHUB_PROFILE_${profileRes.status}`)
+  if (!profileRes.ok) {
+    if (profileRes.status === 403 || profileRes.status === 401) {
+      console.warn(`[scrapeGithub] API returned ${profileRes.status}, falling back to HTML scraping for ${owner}`)
+      return scrapeGithubHtml(url)
+    }
+    throw new Error(`GITHUB_PROFILE_${profileRes.status}`)
+  }
   const profileJson = (await profileRes.json()) as Record<string, unknown>
 
   const reposRes = await fetchWithTimeout(`https://api.github.com/users/${owner}/repos?sort=updated&per_page=8`, { headers })
@@ -1019,20 +1089,28 @@ const clampInt = (value: unknown, min: number, max: number) => {
 }
 
 const canonicalizeSkill = (value: string) => {
-  const lower = value.trim().toLowerCase()
+  const trimmed = value.trim()
+  const lower = trimmed.toLowerCase()
   if (!lower) return null
-  if (lower === "reactjs" || lower.includes("react-like")) return "React"
+  if (lower === "react" || lower === "reactjs" || lower.includes("react-like")) return "React"
   if (lower === "node" || lower === "nodejs" || lower === "node.js") return "Node.js"
-  if (lower === "nextjs" || lower === "next.js") return "Next.js"
-  if (lower === "typescript/javascript") return "TypeScript"
+  if (lower === "next" || lower === "nextjs" || lower === "next.js") return "Next.js"
+  if (lower === "typescript" || lower === "ts" || lower === "typescript/javascript") return "TypeScript"
+  if (lower === "javascript" || lower === "js") return "JavaScript"
   if (lower === "tailwind" || lower === "tailwindcss") return "TailwindCSS"
   if (lower === "postgres" || lower === "postgresql") return "PostgreSQL"
   if (lower === "socket.io" || lower === "websockets") return "WebSocket"
-  if (lower === "ci/cd") return "CI/CD"
+  if (lower === "mongodb" || lower === "mongo") return "MongoDB"
+  if (lower === "aws" || lower === "amazon web services") return "AWS"
+  if (lower === "gcp" || lower === "google cloud") return "GCP"
+  if (lower === "azure" || lower === "microsoft azure") return "Azure"
+  if (lower === "docker" || lower === "containerization") return "Docker"
+  if (lower === "kubernetes" || lower === "k8s") return "Kubernetes"
+  if (lower === "ci/cd" || lower === "cicd") return "CI/CD"
   if (lower.includes("modern stack awareness")) return null
   if (lower.includes("awareness") || lower.includes("mindset") || lower.includes("communication")) return null
   if (lower.includes("soft skills") || lower.includes("problem solving")) return null
-  return value.trim()
+  return trimmed
 }
 
 const extractAdvancedSkills = (text: string | null | undefined): Set<string> => {
@@ -1265,13 +1343,16 @@ const extractResumeProjects = (resumeText: string | null): ProjectSignal[] => {
 }
 
 const normalizeSkillLabels = (skills: string[]) => {
-  const unique = new Set<string>()
+  const uniqueMap = new Map<string, string>()
   for (const skill of skills) {
     const mapped = canonicalizeSkill(skill)
     if (!mapped) continue
-    unique.add(mapped)
+    const key = mapped.toLowerCase()
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, mapped)
+    }
   }
-  return [...unique].slice(0, 20)
+  return [...uniqueMap.values()].slice(0, 20)
 }
 
 const buildPrompt = ({
@@ -1327,6 +1408,7 @@ const buildPrompt = ({
     "",
     "Skills list must contain concrete tools/platforms/frameworks only (e.g., React, Node.js, AWS, Docker, PostgreSQL, Figma, Salesforce, HubSpot, Google Analytics, Jira).",
     "Do NOT include abstract phrases like 'modern stack awareness', 'communication', or 'problem solving' in skills.",
+    "Each skill in the 'skills' array must be unique. Do NOT repeat skills.",
     "For non-engineering roles also return tool/platform names (not generic descriptors).",
     "",
     roleAwareInstruction,
@@ -1389,7 +1471,7 @@ const buildMinimalPrompt = ({
     `Detected role family: ${roleFamily}`,
     `Rubric: ${rubric.criteria.map((item) => `${item.key}(0-${item.max})`).join(", ")}.`,
     "Skills must be concrete tool/platform names only (examples: React, Node.js, AWS, Docker, Figma, Salesforce, HubSpot, Google Analytics, Jira).",
-    "Avoid abstract skill phrases.",
+    "Each skill must be unique. Avoid abstract phrases or repetition.",
     roleFamily === "engineering"
       ? "Do NOT penalize missing formal experience when project/GitHub evidence is strong."
       : "Do NOT penalize missing GitHub for non-engineering roles.",
@@ -1480,8 +1562,12 @@ const parseAiJson = (content: string, rubric: RubricDefinition, fallbackRoleFami
       ? normalizeSkillLabels(parsed.skills.filter((item): item is string => typeof item === "string"))
       : [],
     summary: typeof parsed.summary === "string" ? parsed.summary : null,
-    strengths: Array.isArray(parsed.strengths) ? parsed.strengths.filter((item): item is string => typeof item === "string").slice(0, 8) : [],
-    weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses.filter((item): item is string => typeof item === "string").slice(0, 8) : [],
+    strengths: Array.isArray(parsed.strengths)
+      ? [...new Set(parsed.strengths.filter((item): item is string => typeof item === "string"))].slice(0, 8)
+      : [],
+    weaknesses: Array.isArray(parsed.weaknesses)
+      ? [...new Set(parsed.weaknesses.filter((item): item is string => typeof item === "string"))].slice(0, 8)
+      : [],
     recommendation: normalizeRecommendation(parsed.recommendation, score ?? 0),
   }
 }
