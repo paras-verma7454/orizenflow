@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { SidebarDashboardFooter, SidebarDashboardNav } from "@/components/sidebar/dashboard"
@@ -21,7 +22,7 @@ import { auth } from "@/lib/auth"
 import { config } from "@/lib/config"
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const session = await auth.api.getSession()
+  const session = await auth.api.getSession({ headers: (await headers()) })
   const canAccessAdmin = isPlatformAdmin(session?.user?.email)
 
   if (!session?.user) redirect("/")

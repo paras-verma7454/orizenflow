@@ -151,18 +151,16 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-async function getAuthOrThrow(): Promise<{ session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["session"]; user: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["user"] }> {
-  const request = new Request("http://localhost")
-  const session = await auth.api.getSession({ headers: request.headers })
+async function getAuthOrThrow(headers: Headers): Promise<{ session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["session"]; user: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["user"] }> {
+  const session = await auth.api.getSession({ headers })
   if (!session) {
     throw new Error("Unauthorized")
   }
   return session
 }
 
-async function getAuth(): Promise<{ session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["session"]; user: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["user"] } | null> {
-  const request = new Request("http://localhost")
-  const session = await auth.api.getSession({ headers: request.headers })
+async function getAuth(headers: Headers): Promise<{ session: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["session"]; user: NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>["user"] } | null> {
+  const session = await auth.api.getSession({ headers })
   return session
 }
 
@@ -198,7 +196,7 @@ function buildCandidateFilters({ orgId, jobId, status, q, skills, minScore, maxS
 }
 
 async function handleV1Get(request: NextRequest, segments: string[]) {
-  const auth = await getAuth()
+  const auth = await getAuth(request.headers)
   if (!auth) return errorResponse("UNAUTHORIZED", "Unauthorized", 401)
   const orgId = auth.session.activeOrganizationId
 
@@ -239,7 +237,7 @@ async function handleV1Get(request: NextRequest, segments: string[]) {
 }
 
 async function handleV1Post(request: NextRequest, segments: string[]) {
-  const auth = await getAuth()
+  const auth = await getAuth(request.headers)
   if (!auth) return errorResponse("UNAUTHORIZED", "Unauthorized", 401)
 
   if (segments[0] === "candidates") {
@@ -270,7 +268,7 @@ async function handleV1Post(request: NextRequest, segments: string[]) {
 }
 
 async function handleV1Patch(request: NextRequest, segments: string[]) {
-  const auth = await getAuth()
+  const auth = await getAuth(request.headers)
   if (!auth) return errorResponse("UNAUTHORIZED", "Unauthorized", 401)
 
   if (segments[0] === "user") {
@@ -285,7 +283,7 @@ async function handleV1Patch(request: NextRequest, segments: string[]) {
 }
 
 async function handleV1Put(request: NextRequest, segments: string[]) {
-  const auth = await getAuth()
+  const auth = await getAuth(request.headers)
   if (!auth) return errorResponse("UNAUTHORIZED", "Unauthorized", 401)
 
   if (segments[0] === "jobs" && segments[1]) {
@@ -300,7 +298,7 @@ async function handleV1Put(request: NextRequest, segments: string[]) {
 }
 
 async function handleV1Delete(request: NextRequest, segments: string[]) {
-  const auth = await getAuth()
+  const auth = await getAuth(request.headers)
   if (!auth) return errorResponse("UNAUTHORIZED", "Unauthorized", 401)
 
   if (segments[0] === "jobs" && segments[1]) {

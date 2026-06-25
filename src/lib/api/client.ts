@@ -58,20 +58,16 @@ function toQueryString(query?: Record<string, string>): string {
   return str ? `?${str}` : ""
 }
 
-export async function apiFetch<T>(
+export async function apiFetch(
   path: string,
   options?: RequestInit,
-): Promise<T> {
+): Promise<Response> {
   const res = await fetch(path, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...options,
   })
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: { message: "Request failed" } }))
-    throw error
-  }
-  return res.json()
+  return res
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
