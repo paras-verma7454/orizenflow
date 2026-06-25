@@ -1,7 +1,0 @@
-export * from "@/routers/admin"
-export * from "@/routers/auth"
-export * from "@/routers/jobs"
-export * from "@/routers/public"
-export * from "@/routers/organization"
-export * from "@/routers/v1"
-export * from "@/routers/waitlist"
