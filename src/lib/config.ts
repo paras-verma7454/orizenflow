@@ -9,8 +9,8 @@ export const config = {
   },
 
   api: {
-    url: "",
-    internalUrl: undefined as string | undefined,
+    url: process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_APP_URL || "",
+    internalUrl: process.env.INTERNAL_API_URL as string | undefined,
   },
 
   captcha: {

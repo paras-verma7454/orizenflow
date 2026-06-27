@@ -21,19 +21,26 @@ type PublicJobResponse = {
 async function getPublicJobByShortId(
   shortId: string,
 ): Promise<PublicJobResponse | null> {
-  const apiBase = config.api.internalUrl || config.api.url;
-  const res = await fetch(
-    `${apiBase}/api/public/job/${encodeURIComponent(shortId)}`,
-    {
-      cache: "no-store",
-    },
-  );
+  const apiBases = [
+    config.api.internalUrl,
+    config.api.url,
+    config.app.url,
+  ].filter((value): value is string => Boolean(value));
 
-  if (!res.ok) {
-    return null;
+  for (const apiBase of apiBases) {
+    try {
+      const res = await fetch(
+        `${apiBase}/api/public/job/${encodeURIComponent(shortId)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) continue;
+      return (await res.json()) as PublicJobResponse;
+    } catch {
+      continue;
+    }
   }
 
-  return (await res.json()) as PublicJobResponse;
+  return null;
 }
 
 export default async function EmbedJobApplyPage({

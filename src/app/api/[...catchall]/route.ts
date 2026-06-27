@@ -919,12 +919,30 @@ async function handleAdminPost(request: NextRequest, segments: string[], auth: N
 
 async function handlePublicGet(request: NextRequest, segments: string[]) {
   if (segments[0] === "job" && segments[1]) {
+    const shortId = segments[1];
     const [data] = await db.select({
       id: jobs.id, shortId: jobs.shortId, title: jobs.title, slug: jobs.slug, description: jobs.description,
       status: jobs.status, jobType: jobs.jobType, location: jobs.location, salaryRange: jobs.salaryRange,
       questionsJson: jobs.questionsJson, createdAt: jobs.createdAt,
       organization: { id: organization.id, name: organization.name, slug: organization.slug, logo: organization.logo, metadata: organization.metadata },
-    }).from(jobs).innerJoin(organization, eq(jobs.organizationId, organization.id)).where(and(eq(jobs.shortId, segments[1]), ne(jobs.status, "draft")))
+    }).from(jobs).innerJoin(organization, eq(jobs.organizationId, organization.id)).where(and(eq(jobs.shortId, shortId), ne(jobs.status, "draft")))
+
+    if (!data) return errorResponse("NOT_FOUND", "Job not found", 404)
+    const meta = parseMetadata(data.organization.metadata)
+    return NextResponse.json({
+      data: { ...data, questions: (() => { try { const q = JSON.parse(data.questionsJson ?? "[]"); return Array.isArray(q) ? q : [] } catch { return [] } })(), organization: { id: data.organization.id, name: data.organization.name, slug: data.organization.slug, logo: data.organization.logo, tagline: meta.tagline ?? null, about: meta.about ?? null, websiteUrl: meta.websiteUrl ?? null, linkedinUrl: meta.linkedinUrl ?? null } },
+    })
+  }
+
+  // Support /api/public/{orgSlug}/job/{shortId} format
+  if (segments[1] === "job" && segments[2]) {
+    const shortId = segments[2];
+    const [data] = await db.select({
+      id: jobs.id, shortId: jobs.shortId, title: jobs.title, slug: jobs.slug, description: jobs.description,
+      status: jobs.status, jobType: jobs.jobType, location: jobs.location, salaryRange: jobs.salaryRange,
+      questionsJson: jobs.questionsJson, createdAt: jobs.createdAt,
+      organization: { id: organization.id, name: organization.name, slug: organization.slug, logo: organization.logo, metadata: organization.metadata },
+    }).from(jobs).innerJoin(organization, eq(jobs.organizationId, organization.id)).where(and(eq(jobs.shortId, shortId), ne(jobs.status, "draft")))
 
     if (!data) return errorResponse("NOT_FOUND", "Job not found", 404)
     const meta = parseMetadata(data.organization.metadata)
