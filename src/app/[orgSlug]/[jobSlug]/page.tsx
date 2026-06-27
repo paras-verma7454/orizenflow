@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { config } from "@/lib/config";
+import { resolveApiBase } from "@/lib/api/server";
 
 type PublicJobResponse = {
   data: {
@@ -13,26 +13,18 @@ async function getJobBySlug(
   orgSlug: string,
   jobSlug: string,
 ): Promise<PublicJobResponse | null> {
-  const apiBases = [
-    config.api.internalUrl,
-    config.api.url,
-    config.app.url,
-  ].filter((value): value is string => Boolean(value));
-
-  for (const apiBase of apiBases) {
-    try {
-      const res = await fetch(
-        `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/job/by-slug/${encodeURIComponent(jobSlug)}`,
-        { cache: "no-store" },
-      );
-      if (!res.ok) continue;
-      return (await res.json()) as PublicJobResponse;
-    } catch {
-      continue;
-    }
+  const apiBase = resolveApiBase();
+  try {
+    const res = await fetch(
+      `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/job/by-slug/${encodeURIComponent(jobSlug)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as PublicJobResponse;
+  } catch (err) {
+    console.error("[getJobBySlug] fetch failed:", err instanceof Error ? err.message : err);
+    return null;
   }
-
-  return null;
 }
 
 export default async function JobSlugRedirectPage({

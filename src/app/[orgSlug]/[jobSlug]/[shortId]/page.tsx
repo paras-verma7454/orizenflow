@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Highlight } from "@/components/ui/hero-highlight";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/lib/config";
+import { resolveApiBase } from "@/lib/api/server";
 import { ApplyForm } from "./components/ApplyForm";
 
 type PublicJobResponse = {
@@ -91,26 +92,18 @@ async function getPublicJob(
   orgSlug: string,
   shortId: string,
 ): Promise<PublicJobResult> {
-  const apiBases = [
-    config.api.internalUrl,
-    config.api.url,
-    config.app.url,
-  ].filter((value): value is string => Boolean(value));
-
-  for (const apiBase of apiBases) {
-    try {
-      const res = await fetch(
-        `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/job/${encodeURIComponent(shortId)}`,
-        { cache: "no-store" },
-      );
-      if (!res.ok) continue;
-      return (await res.json()) as PublicJobResponse;
-    } catch {
-      continue;
-    }
+  const apiBase = resolveApiBase();
+  try {
+    const res = await fetch(
+      `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/job/${encodeURIComponent(shortId)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as PublicJobResponse;
+  } catch (err) {
+    console.error("[getPublicJob] fetch failed:", err instanceof Error ? err.message : err);
+    return null;
   }
-
-  return null;
 }
 
 export async function generateMetadata({

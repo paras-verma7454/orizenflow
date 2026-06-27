@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 
 import { config } from "@/lib/config";
+import { resolveApiBase } from "@/lib/api/server";
 import { ApplyForm } from "@/app/[orgSlug]/[jobSlug]/[shortId]/components/ApplyForm";
 import { HeightReporter } from "./height-reporter";
 import { Highlight } from "@/components/ui/hero-highlight";
@@ -21,26 +22,18 @@ type PublicJobResponse = {
 async function getPublicJobByShortId(
   shortId: string,
 ): Promise<PublicJobResponse | null> {
-  const apiBases = [
-    config.api.internalUrl,
-    config.api.url,
-    config.app.url,
-  ].filter((value): value is string => Boolean(value));
-
-  for (const apiBase of apiBases) {
-    try {
-      const res = await fetch(
-        `${apiBase}/api/public/job/${encodeURIComponent(shortId)}`,
-        { cache: "no-store" },
-      );
-      if (!res.ok) continue;
-      return (await res.json()) as PublicJobResponse;
-    } catch {
-      continue;
-    }
+  const apiBase = resolveApiBase();
+  try {
+    const res = await fetch(
+      `${apiBase}/api/public/job/${encodeURIComponent(shortId)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as PublicJobResponse;
+  } catch (err) {
+    console.error("[getPublicJobByShortId] fetch failed:", err instanceof Error ? err.message : err);
+    return null;
   }
-
-  return null;
 }
 
 export default async function EmbedJobApplyPage({

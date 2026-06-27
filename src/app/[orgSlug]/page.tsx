@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AnimatedLinkedin } from "@/components/icons/animated-linkedin";
 import { Highlight } from "@/components/ui/hero-highlight";
 import { config } from "@/lib/config";
+import { resolveApiBase } from "@/lib/api/server";
 import { JobsSearchList } from "./JobsSearchList";
 
 type JobsGalleryResponse = {
@@ -32,32 +33,18 @@ type JobsGalleryResponse = {
 };
 
 async function getJobsGallery(orgSlug: string) {
-  const apiBases = [
-    config.api.internalUrl,
-    config.api.url,
-    config.app.url,
-  ].filter((value): value is string => Boolean(value));
-
-  for (const apiBase of apiBases) {
-    try {
-      const res = await fetch(
-        `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/jobs`,
-        {
-          cache: "no-store",
-        },
-      );
-
-      if (!res.ok) {
-        continue;
-      }
-
-      return (await res.json()) as JobsGalleryResponse;
-    } catch {
-      continue;
-    }
+  const apiBase = resolveApiBase();
+  try {
+    const res = await fetch(
+      `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/jobs`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as JobsGalleryResponse;
+  } catch (err) {
+    console.error("[getJobsGallery] fetch failed:", err instanceof Error ? err.message : err);
+    return null;
   }
-
-  return null;
 }
 
 export async function generateMetadata({
