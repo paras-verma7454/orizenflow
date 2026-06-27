@@ -8,7 +8,7 @@ import { auth } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { EmailService } from "@/lib/email"
 import { isAdminEmail } from "@/lib/admin"
-import { parseAiJsonLoose } from "@/lib/ai"
+import { extractFirstJson, parseAiJsonLoose, withRetry } from "@/lib/ai"
 
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
 const emailService = env.RESEND_API_KEY ? new EmailService() : null
@@ -494,12 +494,13 @@ async function semanticSearch(request: NextRequest, auth: NonNullable<Awaited<Re
 
   const prompt = ["Rank the following candidates by relevance to the query.", "Return strict JSON only in this shape:", '{"ids":["candidate_id_1","candidate_id_2"]}', `Query: ${query}`, `Candidates: ${JSON.stringify(candidates.map((c) => ({ id: c.id, name: c.name, job: c.job.title, score: c.matchScore, skillsJson: c.skillsJson, summary: c.evaluationSummary, recommendation: c.recommendation, coverLetter: c.coverLetter })))}`].join("\n")
 
-  const completion = await sarvamClient.chat.completions({
+  const completion = await withRetry(() => sarvamClient.chat.completions({
     model: "sarvam-30b", temperature: 0,
     messages: [{ role: "system", content: "You are a candidate search ranker. Output valid JSON only." }, { role: "user", content: prompt }],
-  })
+  }))
 
-  const content = completion.choices?.[0]?.message?.content ?? ""
+  const message = completion.choices?.[0]?.message
+  const content = message?.reasoning_content ?? message?.content ?? ""
   const parsedJson = parseAiJsonLoose(content)
   if (!parsedJson) return NextResponse.json({ data: candidates.slice(0, limit) })
 
@@ -628,19 +629,29 @@ async function generateDescription(request: NextRequest) {
     salaryRange ? `- Requested Range: ${salaryRange}` : "", "", "HIRING CONTEXT:", context,
   ].filter(Boolean).join("\n")
 
-  const completion = await sarvamClient.chat.completions({
+  const completion = await withRetry(() => sarvamClient.chat.completions({
     model: "sarvam-30b", temperature: 0.3,
     messages: [{ role: "system", content: "You are an expert recruiter. You MUST return ONLY a valid JSON object. No conversational text, no <think> blocks, no markdown code fences." }, { role: "user", content: prompt }],
-  })
+  }))
 
-  const content = completion.choices?.[0]?.message?.content
-  if (!content) return errorResponse("AI_ERROR", "AI model returned an empty response", 502)
+  const message = completion.choices?.[0]?.message
+  const content = message?.reasoning_content ?? message?.content ?? ""
+  if (!content) {
+    console.error("[generate-description] Empty response", { model: completion.model, finish_reason: completion.choices?.[0]?.finish_reason })
+    return errorResponse("AI_ERROR", "AI model returned an empty response", 502)
+  }
 
-  const parsedJson = parseAiJsonLoose(content)
-  if (!parsedJson) return errorResponse("AI_PARSE_ERROR", "Failed to parse AI response into JSON", 502)
+  const responseJson = extractFirstJson(content)
+  if (!responseJson) {
+    console.error("[generate-description] No JSON found in response", { length: content.length, preview: content.slice(0, 300) })
+    return errorResponse("AI_PARSE_ERROR", "No valid JSON found in AI response", 502)
+  }
 
-  const result = z.object({ title: z.string().min(1), description: z.string().min(1), salaryRange: z.string().optional() }).safeParse(parsedJson)
-  if (!result.success) return errorResponse("AI_PARSE_ERROR", "AI response did not match expected schema", 502)
+  const result = z.object({ title: z.string().min(1), description: z.string().min(1), salaryRange: z.string().optional() }).safeParse(responseJson)
+  if (!result.success) {
+    console.error("[generate-description] Schema validation failed", { responseJson, issues: result.error.issues })
+    return errorResponse("AI_PARSE_ERROR", "AI response did not match expected schema", 502)
+  }
 
   const stripHashes = (v: string) => v.split("\n").map((l) => { const m = l.match(/^\s{0,3}#{1,6}\s+(.*)$/); return m ? m[1] : l }).join("\n")
   return NextResponse.json({ data: { title: result.data.title, salaryRange: result.data.salaryRange, description: stripHashes(result.data.description) } })

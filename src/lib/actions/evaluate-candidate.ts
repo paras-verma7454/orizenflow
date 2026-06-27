@@ -5,7 +5,7 @@ import { env } from "@/lib/env"
 import { eq } from "drizzle-orm"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
-import { parseAiJsonLoose } from "@/lib/ai"
+import { parseAiJsonLoose, withRetry } from "@/lib/ai"
 
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
 
@@ -161,30 +161,34 @@ async function runAiEvaluation(
     "Be objective. Consider the candidate's demonstrated abilities, not just keyword matches.",
   ].join("\n")
 
-  const response = await sarvamClient.chat.completions({
+  const response = await withRetry(() => sarvamClient.chat.completions({
     model: "sarvam-30b",
     temperature: 0.2,
     messages: [
       { role: "system", content: "You are an expert technical recruiter. Return ONLY valid JSON." },
       { role: "user", content: prompt },
     ],
-  })
+  }))
 
-  const content = response.choices?.[0]?.message?.content ?? ""
+  const message = response.choices?.[0]?.message
+  const content = message?.reasoning_content ?? message?.content ?? ""
   const parsed = parseAiJsonLoose(content)
   if (!parsed) throw new Error("Failed to parse AI response")
 
   const schema = z.object({
-    score: z.number().min(0).max(100),
+    score: z.coerce.number().min(0).max(100),
     summary: z.string(),
     skills: z.array(z.string()),
     strengths: z.array(z.string()),
     weaknesses: z.array(z.string()),
     recommendation: z.enum(["strong_yes", "yes", "maybe", "no", "strong_no"]),
-  })
+  }).passthrough()
 
   const result = schema.safeParse(parsed)
-  if (!result.success) throw new Error("AI response failed schema validation")
+  if (!result.success) {
+    console.error("[evaluate-candidate] Schema validation failed", { parsed, issues: result.error.issues })
+    throw new Error(`AI response failed schema validation: ${result.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; ")}`)
+  }
 
   return {
     ...result.data,

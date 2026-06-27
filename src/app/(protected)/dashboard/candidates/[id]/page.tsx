@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/empty";
 import { PipelineStepper } from "@/components/pipeline-stepper";
 import { apiClient } from "@/lib/api/client";
+import { evaluateCandidate } from "@/lib/actions/evaluate-candidate";
 
 type CandidateStatus =
   | "applied"
@@ -521,19 +522,16 @@ export default function CandidateProfilePage() {
   });
 
   const reviewMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiClient.v1.candidates[":id"].review.$post({
-        param: { id: params.id },
-        json: { force: true },
-      });
-      if (!res.ok) throw new Error("Failed to queue review");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["candidate-evaluation", params.id],
-      });
-      toast.success("Re-review queued successfully");
+    mutationFn: () => evaluateCandidate(params.id),
+    onSuccess: (result) => {
+      if (result.success) {
+        queryClient.invalidateQueries({
+          queryKey: ["candidate-evaluation", params.id],
+        });
+        toast.success("Re-review completed successfully");
+      } else {
+        toast.error(result.error ?? "Re-review failed");
+      }
     },
     onError: (error) => {
       toast.error(error.message);
