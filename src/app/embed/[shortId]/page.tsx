@@ -2,39 +2,10 @@ import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 
 import { config } from "@/lib/config";
-import { resolveApiBase } from "@/lib/api/server";
 import { ApplyForm } from "@/app/[orgSlug]/[jobSlug]/[shortId]/components/ApplyForm";
 import { HeightReporter } from "./height-reporter";
 import { Highlight } from "@/components/ui/hero-highlight";
-
-type PublicJobResponse = {
-  data: {
-    shortId: string;
-    title: string;
-    status: string;
-    questions: Array<{ id: string; prompt: string; required: boolean }>;
-    organization: {
-      slug: string;
-    };
-  };
-};
-
-async function getPublicJobByShortId(
-  shortId: string,
-): Promise<PublicJobResponse | null> {
-  const apiBase = resolveApiBase();
-  try {
-    const res = await fetch(
-      `${apiBase}/api/public/job/${encodeURIComponent(shortId)}`,
-      { cache: "no-store" },
-    );
-    if (!res.ok) return null;
-    return (await res.json()) as PublicJobResponse;
-  } catch (err) {
-    console.error("[getPublicJobByShortId] fetch failed:", err instanceof Error ? err.message : err);
-    return null;
-  }
-}
+import { getPublicJobByShortId } from "@/app/[orgSlug]/[jobSlug]/_shared/get-public-job";
 
 export default async function EmbedJobApplyPage({
   params,
@@ -46,13 +17,11 @@ export default async function EmbedJobApplyPage({
   const { shortId } = await params;
   const query = await searchParams;
 
-  const result = await getPublicJobByShortId(shortId);
+  const job = await getPublicJobByShortId(shortId);
 
-  if (!result) {
+  if (!job) {
     notFound();
   }
-
-  const job = result.data;
   const isJobOpen = job.status === "open";
   const hideTitle = query.hideTitle === "1";
   const transparentBackground = query.transparentBackground === "1";

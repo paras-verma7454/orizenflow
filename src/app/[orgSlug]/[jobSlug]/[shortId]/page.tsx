@@ -6,44 +6,14 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { AnimatedLinkedin } from "@/components/icons/animated-linkedin";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Highlight } from "@/components/ui/hero-highlight";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/lib/config";
-import { resolveApiBase } from "@/lib/api/server";
 import { ApplyForm } from "./components/ApplyForm";
-
-type PublicJobResponse = {
-  data: {
-    id: string;
-    shortId: string;
-    title: string;
-    slug: string;
-    description: string;
-    status: string;
-    jobType: string;
-    location: string | null;
-    salaryRange: string | null;
-    questions: Array<{ id: string; prompt: string; required: boolean }>;
-    createdAt: string;
-    organization: {
-      id: string;
-      name: string;
-      slug: string;
-      logo: string | null;
-      tagline: string | null;
-      about: string | null;
-      websiteUrl: string | null;
-      linkedinUrl: string | null;
-      website?: string | null;
-      linkedin?: string | null;
-    };
-  };
-};
-
-type PublicJobResult = PublicJobResponse | null;
+import { getPublicJobByShortId } from "../_shared/get-public-job";
+import type { PublicJobData } from "../_shared/get-public-job";
 
 const statusLabelMap: Record<string, string> = {
   open: "Actively hiring",
@@ -88,24 +58,6 @@ const jobTypeLabelMap: Record<string, string> = {
   "on-site": "On-site",
 };
 
-async function getPublicJob(
-  orgSlug: string,
-  shortId: string,
-): Promise<PublicJobResult> {
-  const apiBase = resolveApiBase();
-  try {
-    const res = await fetch(
-      `${apiBase}/api/public/${encodeURIComponent(orgSlug)}/job/${encodeURIComponent(shortId)}`,
-      { cache: "no-store" },
-    );
-    if (!res.ok) return null;
-    return (await res.json()) as PublicJobResponse;
-  } catch (err) {
-    console.error("[getPublicJob] fetch failed:", err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
 export async function generateMetadata({
   params,
 }: {
@@ -113,16 +65,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { orgSlug, shortId } = await params;
 
-  const result = await getPublicJob(orgSlug, shortId);
+  const job = await getPublicJobByShortId(shortId);
 
-  if (!result) {
+  if (!job) {
     return {
       title: "Job Not Found",
       description: "This job listing could not be found.",
     };
   }
-
-  const { data: job } = result;
   const orgName = job.organization.name;
 
   const typePart = job.jobType
@@ -208,13 +158,11 @@ export default async function PublicJobApplyPage({
   const { orgSlug, jobSlug, shortId } = await params;
   const { embed } = await searchParams;
 
-  const result = await getPublicJob(orgSlug, shortId);
+  const job = await getPublicJobByShortId(shortId);
 
-  if (!result) {
+  if (!job) {
     redirect(`/${orgSlug}`);
   }
-
-  const job = result.data;
 
   // Verify the job title in URL matches current slug (redirect if changed)
   if (jobSlug !== job.slug) {
