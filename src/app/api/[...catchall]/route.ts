@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, ilike, lte, ne, or, sql } from "drizzle-orm"
-import path from "path"
-import { PDFParse } from "pdf-parse"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
-
-PDFParse.setWorker(new URL("file:///" + path.resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs").replace(/\\/g, "/")).href)
 
 import { db, candidateEvaluations, jobApplications, jobs, member, organization, session as sessionTable, user, waitlist } from "@/lib/db"
 import { auth } from "@/lib/auth"
@@ -17,6 +13,20 @@ import { evaluateCandidate } from "@/lib/actions/evaluate-candidate"
 import { extractFirstJson, parseAiJsonLoose, withRetry } from "@/lib/ai"
 
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js")
+  const doc = await pdfjsLib.getDocument({ data: buffer }).promise
+  let text = ""
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i)
+    const content = await page.getTextContent()
+    text += content.items.map((item) => (item as { str?: string }).str ?? "").join(" ") + "\n"
+    page.cleanup()
+  }
+  doc.destroy()
+  return text.slice(0, 10000)
+}
 const emailService = env.RESEND_API_KEY ? new EmailService() : null
 
 const CANDIDATE_STATUSES = ["applied", "screening", "interview", "offer", "hired", "rejected"] as const
@@ -1013,10 +1023,7 @@ async function handlePublicPost(request: NextRequest, segments: string[]) {
         return errorResponse("VALIDATION", "Resume must be under 2MB", 400)
       }
       const arrayBuffer = await resumeFile.arrayBuffer()
-      const parser = new PDFParse({ data: Buffer.from(arrayBuffer) })
-      const result = await parser.getText()
-      resumeText = result.text.slice(0, 10000)
-      await parser.destroy()
+      resumeText = await extractPdfText(Buffer.from(arrayBuffer))
     } else {
       return errorResponse("VALIDATION", "Resume file is required", 400)
     }
