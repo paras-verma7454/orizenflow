@@ -1122,16 +1122,13 @@ export default function Home() {
 
                         <div className="space-y-2">
                           <label className="block text-sm font-medium text-foreground">
-                            Resume URL *
+                            Resume (PDF) *
                           </label>
-                          <input
-                            type="text"
-                            disabled
-                            value="https://drive.google.com/file/d/1a2b3c4d5e6f7g8h9i0j/view"
-                            className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 text-sm"
-                          />
+                          <div className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 text-sm">
+                            <span className="opacity-60">sarah-johnson-resume.pdf</span>
+                          </div>
                           <p className="text-xs text-muted-foreground">
-                            For Google Drive, set sharing to Anyone with link - Viewer.
+                            PDF only, max 2MB. Resume text is extracted and analyzed.
                           </p>
                         </div>
                       </div>

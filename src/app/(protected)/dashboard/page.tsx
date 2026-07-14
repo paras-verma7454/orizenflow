@@ -76,7 +76,7 @@ type Candidate = {
   id: string;
   name: string;
   email: string;
-  resumeUrl: string;
+  resumeText: string | null;
   status: CandidateStatus;
   createdAt: string;
   job: {

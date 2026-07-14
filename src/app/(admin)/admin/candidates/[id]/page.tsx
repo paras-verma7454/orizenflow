@@ -24,7 +24,7 @@ type CandidateDebug = {
     email: string;
     status: string;
     createdAt: string;
-    resumeUrl: string;
+    resumeText: string | null;
     job: {
       id: string;
       shortId: string;
@@ -130,14 +130,18 @@ export default function AdminCandidateDebugPage() {
           </p>
           <p>
             <span className="text-muted-foreground">Resume:</span>{" "}
-            <a
-              href={data.application.resumeUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline"
-            >
-              Open resume
-            </a>
+            {data.application.resumeText ? (
+              <a
+                href={`/dashboard/candidates/${data.application.id}/resume`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline"
+              >
+                View resume text
+              </a>
+            ) : (
+              "No resume extracted"
+            )}
           </p>
         </CardContent>
       </Card>

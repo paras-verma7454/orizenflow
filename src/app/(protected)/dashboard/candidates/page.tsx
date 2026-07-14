@@ -70,7 +70,7 @@ type Candidate = {
   shortId: string;
   name: string;
   email: string;
-  resumeUrl: string;
+  resumeText: string | null;
   linkedinUrl: string | null;
   githubUrl: string | null;
   portfolioUrl: string | null;
@@ -716,15 +716,10 @@ export default function CandidatesPage() {
                       </TooltipProvider>
                     </TableCell>
                     <TableCell>
-                      <a
-                        href={candidate.resumeUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-accent hover:underline"
-                      >
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <RiFileTextLine className="size-4" />
-                        Open
-                      </a>
+                        {candidate.resumeText ? "Extracted" : "-"}
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}

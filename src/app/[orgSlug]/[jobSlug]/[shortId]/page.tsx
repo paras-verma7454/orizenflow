@@ -428,7 +428,7 @@ export default async function PublicJobApplyPage({
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Required: name, email, and resume URL. Optional links help us
+                Required: name, email, and resume file (PDF). Optional links help us
                 evaluate your work better.
               </p>
               <Separator />

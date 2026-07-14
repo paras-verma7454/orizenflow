@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { and, desc, eq, gte, ilike, lte, ne, or, sql } from "drizzle-orm"
+import path from "path"
+import { PDFParse } from "pdf-parse"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
+
+PDFParse.setWorker(new URL("file:///" + path.resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs").replace(/\\/g, "/")).href)
 
 import { db, candidateEvaluations, jobApplications, jobs, member, organization, session as sessionTable, user, waitlist } from "@/lib/db"
 import { auth } from "@/lib/auth"
 import { env } from "@/lib/env"
 import { EmailService } from "@/lib/email"
 import { isAdminEmail } from "@/lib/admin"
+import { isPrivateOrInternalUrl } from "@/lib/url-utils"
+import { evaluateCandidate } from "@/lib/actions/evaluate-candidate"
 import { extractFirstJson, parseAiJsonLoose, withRetry } from "@/lib/ai"
 
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
@@ -61,15 +67,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (segments[0] === "v1") {
-      return handleV1Get(request, segments.slice(1))
+      return await handleV1Get(request, segments.slice(1))
     }
 
     if (segments[0] === "public") {
-      return handlePublicGet(request, segments.slice(1))
+      return await handlePublicGet(request, segments.slice(1))
     }
 
     if (segments[0] === "waitlist") {
-      return handleWaitlistGet(request, segments.slice(1))
+      return await handleWaitlistGet(request, segments.slice(1))
     }
 
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not Found" } }, { status: 404 })
@@ -85,15 +91,15 @@ export async function POST(request: NextRequest) {
 
   try {
     if (segments[0] === "v1") {
-      return handleV1Post(request, segments.slice(1))
+      return await handleV1Post(request, segments.slice(1))
     }
 
     if (segments[0] === "public") {
-      return handlePublicPost(request, segments.slice(1))
+      return await handlePublicPost(request, segments.slice(1))
     }
 
     if (segments[0] === "waitlist") {
-      return handleWaitlistPost(request, segments.slice(1))
+      return await handleWaitlistPost(request, segments.slice(1))
     }
 
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not Found" } }, { status: 404 })
@@ -109,7 +115,7 @@ export async function PATCH(request: NextRequest) {
 
   try {
     if (segments[0] === "v1") {
-      return handleV1Patch(request, segments.slice(1))
+      return await handleV1Patch(request, segments.slice(1))
     }
 
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not Found" } }, { status: 404 })
@@ -125,7 +131,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     if (segments[0] === "v1") {
-      return handleV1Put(request, segments.slice(1))
+      return await handleV1Put(request, segments.slice(1))
     }
 
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not Found" } }, { status: 404 })
@@ -141,7 +147,7 @@ export async function DELETE(request: NextRequest) {
 
   try {
     if (segments[0] === "v1") {
-      return handleV1Delete(request, segments.slice(1))
+      return await handleV1Delete(request, segments.slice(1))
     }
 
     return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not Found" } }, { status: 404 })
@@ -179,7 +185,7 @@ function buildCandidateFilters({ orgId, jobId, status, q, skills, minScore, maxS
   }
   if (source === "github") filters.push(or(sql<boolean>`${jobApplications.githubUrl} is not null`, ilike(candidateEvaluations.evidenceJson, '%"github":{%'))!)
   if (source === "portfolio") filters.push(or(sql<boolean>`${jobApplications.portfolioUrl} is not null`, ilike(candidateEvaluations.evidenceJson, '%"portfolio":{%'))!)
-  if (source === "resume") filters.push(sql<boolean>`${jobApplications.resumeUrl} is not null`)
+  if (source === "resume") filters.push(sql<boolean>`${jobApplications.resumeText} is not null`)
   if (dateFrom) filters.push(gte(jobApplications.createdAt, new Date(dateFrom)))
   if (dateTo) filters.push(lte(jobApplications.createdAt, new Date(dateTo)))
   if (q) {
@@ -334,7 +340,7 @@ async function listCandidates(request: NextRequest, auth: NonNullable<Awaited<Re
   const data = await db
     .select({
       id: jobApplications.id, shortId: jobApplications.shortId, name: jobApplications.name,
-      email: jobApplications.email, resumeUrl: jobApplications.resumeUrl,
+      email: jobApplications.email, resumeText: jobApplications.resumeText,
       linkedinUrl: jobApplications.linkedinUrl, githubUrl: jobApplications.githubUrl,
       portfolioUrl: jobApplications.portfolioUrl, coverLetter: jobApplications.coverLetter,
       status: jobApplications.status, matchScore: candidateEvaluations.score,
@@ -368,7 +374,7 @@ async function getCandidate(id: string, auth: NonNullable<Awaited<ReturnType<typ
   const [data] = await db
     .select({
       id: jobApplications.id, name: jobApplications.name, email: jobApplications.email,
-      resumeUrl: jobApplications.resumeUrl, linkedinUrl: jobApplications.linkedinUrl,
+      resumeText: jobApplications.resumeText, linkedinUrl: jobApplications.linkedinUrl,
       githubUrl: jobApplications.githubUrl, portfolioUrl: jobApplications.portfolioUrl,
       coverLetter: jobApplications.coverLetter, status: jobApplications.status,
       createdAt: jobApplications.createdAt,
@@ -424,7 +430,7 @@ async function exportCandidatesCSV(request: NextRequest, auth: NonNullable<Await
     .select({
       id: jobApplications.id, shortId: jobApplications.shortId, name: jobApplications.name,
       email: jobApplications.email, status: jobApplications.status, createdAt: jobApplications.createdAt,
-      resumeUrl: jobApplications.resumeUrl, linkedinUrl: jobApplications.linkedinUrl,
+      resumeText: jobApplications.resumeText, linkedinUrl: jobApplications.linkedinUrl,
       githubUrl: jobApplications.githubUrl, portfolioUrl: jobApplications.portfolioUrl,
       coverLetter: jobApplications.coverLetter, questionAnswersJson: jobApplications.questionAnswersJson,
       matchScore: candidateEvaluations.score, skillsJson: candidateEvaluations.skillsJson,
@@ -437,13 +443,13 @@ async function exportCandidatesCSV(request: NextRequest, auth: NonNullable<Await
     .where(whereClause)
     .orderBy(desc(jobApplications.createdAt))
 
-  const headers = ["Candidate ID", "Name", "Email", "Status", "Applied At", "Job ID", "Job Title", "Match Score", "Recommendation", "Resume URL", "LinkedIn URL", "GitHub URL", "Portfolio URL", "Cover Letter", "Skills", "Evaluation Summary", "Question Answers"]
+  const headers = ["Candidate ID", "Name", "Email", "Status", "Applied At", "Job ID", "Job Title", "Match Score", "Recommendation", "Resume Text", "LinkedIn URL", "GitHub URL", "Portfolio URL", "Cover Letter", "Skills", "Evaluation Summary", "Question Answers"]
 
   const toCsv = (v: unknown) => { if (v === null || v === undefined) return ""; const raw = typeof v === "string" ? v : String(v); return `"${raw.replace(/"/g, '""')}"` }
 
   const lines = [headers.join(",")]
   for (const row of rows) {
-    lines.push([row.shortId, row.name, row.email, row.status, row.createdAt?.toISOString() ?? "", row.job.shortId, row.job.title, row.matchScore, row.recommendation, row.resumeUrl, row.linkedinUrl, row.githubUrl, row.portfolioUrl, row.coverLetter, row.skillsJson, row.evaluationSummary, row.questionAnswersJson].map(toCsv).join(","))
+    lines.push([row.shortId, row.name, row.email, row.status, row.createdAt?.toISOString() ?? "", row.job.shortId, row.job.title, row.matchScore, row.recommendation, row.resumeText, row.linkedinUrl, row.githubUrl, row.portfolioUrl, row.coverLetter, row.skillsJson, row.evaluationSummary, row.questionAnswersJson].map(toCsv).join(","))
   }
 
   return new NextResponse(lines.join("\n"), {
@@ -474,7 +480,7 @@ async function semanticSearch(request: NextRequest, auth: NonNullable<Awaited<Re
   const candidates = await db
     .select({
       id: jobApplications.id, shortId: jobApplications.shortId, name: jobApplications.name,
-      email: jobApplications.email, resumeUrl: jobApplications.resumeUrl,
+      email: jobApplications.email, resumeText: jobApplications.resumeText,
       linkedinUrl: jobApplications.linkedinUrl, githubUrl: jobApplications.githubUrl,
       portfolioUrl: jobApplications.portfolioUrl, coverLetter: jobApplications.coverLetter,
       status: jobApplications.status, matchScore: candidateEvaluations.score,
@@ -534,7 +540,7 @@ async function updateCandidateStatus(id: string, request: NextRequest, auth: Non
 
   const [data] = await db.select({
     id: jobApplications.id, name: jobApplications.name, email: jobApplications.email,
-    resumeUrl: jobApplications.resumeUrl, linkedinUrl: jobApplications.linkedinUrl,
+    resumeText: jobApplications.resumeText, linkedinUrl: jobApplications.linkedinUrl,
     githubUrl: jobApplications.githubUrl, portfolioUrl: jobApplications.portfolioUrl,
     coverLetter: jobApplications.coverLetter, status: jobApplications.status, createdAt: jobApplications.createdAt,
     job: { id: jobs.id, title: jobs.title },
@@ -865,7 +871,7 @@ async function handleAdminGet(request: NextRequest, segments: string[], auth: No
   if (segments[0] === "candidates" && segments[2] === "debug") {
     const [application] = await db.select({
       id: jobApplications.id, shortId: jobApplications.shortId, name: jobApplications.name, email: jobApplications.email,
-      status: jobApplications.status, createdAt: jobApplications.createdAt, resumeUrl: jobApplications.resumeUrl,
+      status: jobApplications.status, createdAt: jobApplications.createdAt, resumeText: jobApplications.resumeText,
       jobId: jobs.id, jobShortId: jobs.shortId, jobTitle: jobs.title,
       organizationId: organization.id, organizationName: organization.name, organizationSlug: organization.slug,
     }).from(jobApplications).innerJoin(jobs, eq(jobApplications.jobId, jobs.id)).innerJoin(organization, eq(jobApplications.organizationId, organization.id)).where(eq(jobApplications.id, segments[1]))
@@ -883,7 +889,7 @@ async function handleAdminGet(request: NextRequest, segments: string[], auth: No
 
     return NextResponse.json({
       data: {
-        application: { id: application.id, shortId: application.shortId, name: application.name, email: application.email, status: application.status, createdAt: application.createdAt.toISOString(), resumeUrl: application.resumeUrl, job: { id: application.jobId, shortId: application.jobShortId, title: application.jobTitle }, organization: { id: application.organizationId, name: application.organizationName, slug: application.organizationSlug } },
+        application: { id: application.id, shortId: application.shortId, name: application.name, email: application.email, status: application.status, createdAt: application.createdAt.toISOString(), resumeText: application.resumeText, job: { id: application.jobId, shortId: application.jobShortId, title: application.jobTitle }, organization: { id: application.organizationId, name: application.organizationName, slug: application.organizationSlug } },
         evaluation: evaluation ? { id: evaluation.id, model: evaluation.model, score: evaluation.score, summary: evaluation.summary, recommendation: evaluation.recommendation, resumeTextExcerpt: evaluation.resumeTextExcerpt, evidenceJson: evaluation.evidenceJson, aiResponseJson: evaluation.aiResponseJson, createdAt: evaluation.createdAt.toISOString(), updatedAt: evaluation.updatedAt.toISOString() } : null,
       },
     })
@@ -968,24 +974,51 @@ async function handlePublicGet(request: NextRequest, segments: string[]) {
 }
 
 async function handlePublicPost(request: NextRequest, segments: string[]) {
-  if (segments[0] === "apply") {
-    const body = await request.json()
+  if (segments[segments.length - 1] === "apply") {
+    try {
+      const body = await request.formData()
+
+    const name = (body.get("name") as string) || ""
+    const email = (body.get("email") as string) || ""
+    const resumeFile = body.get("resume") as File | null
+    const linkedinUrl = (body.get("linkedinUrl") as string) || ""
+    const githubUrl = (body.get("githubUrl") as string) || ""
+    const portfolioUrl = (body.get("portfolioUrl") as string) || ""
+    const coverLetter = (body.get("coverLetter") as string) || ""
+    const source = (body.get("source") as string) || "public_link"
+    let questionAnswersRaw = (body.get("questionAnswers") as string) || ""
+
     const parsed = z.object({
       shortId: z.string().min(1), name: z.string().min(1).max(120), email: z.string().email(),
-      resumeUrl: z.string().url(), linkedinUrl: z.string().url().optional().or(z.literal("")),
+      linkedinUrl: z.string().url().optional().or(z.literal("")),
       githubUrl: z.string().url().optional().or(z.literal("")), portfolioUrl: z.string().url().optional().or(z.literal("")),
       coverLetter: z.string().max(5000).optional(),
       questionAnswers: z.array(z.object({ questionId: z.string().min(1).max(80), answer: z.string().max(2000) })).optional(),
-      source: z.enum(["public_link", "embedded_iframe"]).optional(), captchaToken: z.string().min(1).optional(),
-    }).parse(body)
+      source: z.enum(["public_link", "embedded_iframe"]).optional(),
+    }).parse({
+      shortId: segments[2] || "",
+      name, email,
+      linkedinUrl, githubUrl, portfolioUrl,
+      coverLetter: coverLetter || undefined,
+      questionAnswers: questionAnswersRaw ? JSON.parse(questionAnswersRaw) : undefined,
+      source: source || undefined,
+    })
 
-    if (env.TURNSTILE_SECRET_KEY && parsed.captchaToken) {
-      const formData = new URLSearchParams()
-      formData.set("secret", env.TURNSTILE_SECRET_KEY)
-      formData.set("response", parsed.captchaToken)
-      const turnstileRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: formData })
-      const turnstileJson = await turnstileRes.json()
-      if (!turnstileJson.success) return errorResponse("CAPTCHA_FAILED", "Captcha verification failed", 400)
+    let resumeText: string | null = null
+    if (resumeFile && resumeFile.size > 0) {
+      if (resumeFile.type !== "application/pdf") {
+        return errorResponse("VALIDATION", "Resume must be a PDF file", 400)
+      }
+      if (resumeFile.size > 2 * 1024 * 1024) {
+        return errorResponse("VALIDATION", "Resume must be under 2MB", 400)
+      }
+      const arrayBuffer = await resumeFile.arrayBuffer()
+      const parser = new PDFParse({ data: Buffer.from(arrayBuffer) })
+      const result = await parser.getText()
+      resumeText = result.text.slice(0, 10000)
+      await parser.destroy()
+    } else {
+      return errorResponse("VALIDATION", "Resume file is required", 400)
     }
 
     const [job] = await db.select({ id: jobs.id, organizationId: jobs.organizationId, questionsJson: jobs.questionsJson }).from(jobs).where(and(eq(jobs.shortId, parsed.shortId), ne(jobs.status, "draft")))
@@ -1000,13 +1033,24 @@ async function handlePublicPost(request: NextRequest, segments: string[]) {
     const shortId = generateShortId()
     const [inserted] = await db.insert(jobApplications).values({
       shortId, jobId: job.id, organizationId: job.organizationId, name: parsed.name, email: parsed.email,
-      resumeUrl: parsed.resumeUrl, linkedinUrl: parsed.linkedinUrl || null, githubUrl: parsed.githubUrl || null,
+      resumeText, linkedinUrl: parsed.linkedinUrl || null, githubUrl: parsed.githubUrl || null,
       portfolioUrl: parsed.portfolioUrl || null, coverLetter: parsed.coverLetter,
       questionAnswersJson: parsed.questionAnswers ? JSON.stringify(parsed.questionAnswers) : null,
       sourceUrl: parsed.source || "public_link", ip, userAgent, status: "applied",
     }).returning({ id: jobApplications.id, shortId: jobApplications.shortId })
 
+    evaluateCandidate(inserted.id).catch(err =>
+      console.error("[handlePublicPost] Auto-evaluation failed:", err)
+    )
+
     return NextResponse.json({ data: inserted }, { status: 201 })
+    } catch (error) {
+      console.error("[handlePublicPost] Error:", error)
+      if (error instanceof z.ZodError) {
+        return errorResponse("VALIDATION", "Invalid input", 400, error.issues)
+      }
+      return errorResponse("INTERNAL_ERROR", "Failed to submit application", 500)
+    }
   }
 
   return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 })

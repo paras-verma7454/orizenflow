@@ -2,6 +2,7 @@
 
 import { db, candidateEvaluations, jobApplications, jobs } from "@/lib/db"
 import { env } from "@/lib/env"
+import { isPrivateOrInternalUrl } from "@/lib/url-utils"
 import { eq } from "drizzle-orm"
 import { SarvamAIClient } from "sarvamai"
 import { z } from "zod"
@@ -17,7 +18,7 @@ export async function evaluateCandidate(applicationId: string) {
       organizationId: jobApplications.organizationId,
       name: jobApplications.name,
       email: jobApplications.email,
-      resumeUrl: jobApplications.resumeUrl,
+      resumeText: jobApplications.resumeText,
       linkedinUrl: jobApplications.linkedinUrl,
       githubUrl: jobApplications.githubUrl,
       portfolioUrl: jobApplications.portfolioUrl,
@@ -60,39 +61,30 @@ export async function evaluateCandidate(applicationId: string) {
     const score = Math.round(evaluation.score)
     const now = new Date()
 
+    const evalUpdate = {
+      score,
+      status: "completed" as const,
+      evaluationMethod: "ai_evaluation",
+      skillsJson: JSON.stringify(evaluation.skills),
+      summary: evaluation.summary,
+      strengthsJson: JSON.stringify(evaluation.strengths),
+      weaknessesJson: JSON.stringify(evaluation.weaknesses),
+      recommendation: evaluation.recommendation,
+      evidenceJson: JSON.stringify(evaluation.evidence),
+      aiResponseJson: JSON.stringify(evaluation.rawResponse),
+      resumeTextExcerpt: application.resumeText,
+      updatedAt: now,
+    }
+
     if (existingEval.length > 0) {
       await db
         .update(candidateEvaluations)
-        .set({
-          score,
-          status: "completed",
-          evaluationMethod: "ai_evaluation",
-          skillsJson: JSON.stringify(evaluation.skills),
-          summary: evaluation.summary,
-          strengthsJson: JSON.stringify(evaluation.strengths),
-          weaknessesJson: JSON.stringify(evaluation.weaknesses),
-          recommendation: evaluation.recommendation,
-          evidenceJson: JSON.stringify(evaluation.evidence),
-          aiResponseJson: JSON.stringify(evaluation.rawResponse),
-          updatedAt: now,
-        })
+        .set(evalUpdate)
         .where(eq(candidateEvaluations.applicationId, applicationId))
     } else {
       await db
         .update(candidateEvaluations)
-        .set({
-          score,
-          status: "completed",
-          evaluationMethod: "ai_evaluation",
-          skillsJson: JSON.stringify(evaluation.skills),
-          summary: evaluation.summary,
-          strengthsJson: JSON.stringify(evaluation.strengths),
-          weaknessesJson: JSON.stringify(evaluation.weaknesses),
-          recommendation: evaluation.recommendation,
-          evidenceJson: JSON.stringify(evaluation.evidence),
-          aiResponseJson: JSON.stringify(evaluation.rawResponse),
-          updatedAt: now,
-        })
+        .set(evalUpdate)
         .where(eq(candidateEvaluations.applicationId, applicationId))
     }
 
@@ -118,7 +110,7 @@ export async function evaluateCandidate(applicationId: string) {
 
 async function runAiEvaluation(
   application: {
-    name: string; email: string; resumeUrl: string
+    name: string; email: string; resumeText: string | null
     linkedinUrl: string | null; githubUrl: string | null; portfolioUrl: string | null
     coverLetter: string | null
   },
@@ -126,7 +118,7 @@ async function runAiEvaluation(
 ) {
   if (!sarvamClient) throw new Error("SARVAM_API_KEY not configured")
 
-  const resumeText = await fetchResumeText(application.resumeUrl)
+  const resumeText = application.resumeText
   const githubData = application.githubUrl ? await fetchGithubProfile(application.githubUrl) : null
   const portfolioData = application.portfolioUrl ? await fetchPortfolio(application.portfolioUrl) : null
 
@@ -197,17 +189,6 @@ async function runAiEvaluation(
   }
 }
 
-async function fetchResumeText(url: string): Promise<string | null> {
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
-    if (!response.ok) return null
-    const text = await response.text()
-    return text.slice(0, 10000)
-  } catch {
-    return null
-  }
-}
-
 async function fetchGithubProfile(url: string): Promise<Record<string, unknown> | null> {
   try {
     const match = url.match(/github\.com\/([^/]+)/)
@@ -247,12 +228,20 @@ async function fetchGithubProfile(url: string): Promise<Record<string, unknown> 
 
 async function fetchPortfolio(url: string): Promise<Record<string, unknown> | null> {
   try {
+    if (isPrivateOrInternalUrl(url)) return null
+
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) })
     if (!res.ok) return null
     const html = await res.text()
     const title = html.match(/<title>([^<]*)<\/title>/)?.[1]?.trim() || null
     const description = html.match(/<meta\s+name="description"\s+content="([^"]*)"/)?.[1] || null
-    return { title, description, url }
+    const headings = [...html.matchAll(/<h[1-3][^>]*>([^<]*)<\/h[1-3]>/gi)].map((m) => m[1].trim()).filter(Boolean)
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+    let bodyText = ""
+    if (bodyMatch) {
+      bodyText = bodyMatch[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000)
+    }
+    return { title, description, headings: headings.length > 0 ? headings : undefined, bodyText: bodyText || undefined, url }
   } catch {
     return null
   }

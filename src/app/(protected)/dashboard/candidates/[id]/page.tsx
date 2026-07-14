@@ -59,7 +59,7 @@ type Candidate = {
   id: string;
   name: string;
   email: string;
-  resumeUrl: string;
+  resumeText: string | null;
   linkedinUrl: string | null;
   githubUrl: string | null;
   portfolioUrl: string | null;
@@ -943,15 +943,23 @@ export default function CandidateProfilePage() {
                 <RiMailLine className="size-4 text-muted-foreground" />
                 <span className="text-sm">Email Candidate</span>
               </a>
-              <a
-                href={candidate.resumeUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:bg-muted flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 transition-colors dark:border-slate-700/80"
-              >
-                <RiFileTextLine className="size-4 text-muted-foreground" />
-                <span className="text-sm">Open Resume</span>
-              </a>
+              {candidate.resumeText ? (
+                <a
+                  href={`/dashboard/candidates/${params.id}/resume`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:bg-muted flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 transition-colors dark:border-slate-700/80"
+                >
+                  <RiFileTextLine className="size-4 text-muted-foreground" />
+                  <span className="text-sm">View Resume</span>
+                  <RiExternalLinkLine className="ml-auto size-3.5 text-muted-foreground" />
+                </a>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg border-2 border-slate-300/80 p-2.5 dark:border-slate-700/80 opacity-50">
+                  <RiFileTextLine className="size-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">No Resume</span>
+                </div>
+              )}
               {candidate.linkedinUrl ? (
                 <a
                   href={candidate.linkedinUrl}
