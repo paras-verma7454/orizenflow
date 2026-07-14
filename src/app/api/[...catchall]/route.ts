@@ -15,16 +15,9 @@ import { extractFirstJson, parseAiJsonLoose, withRetry } from "@/lib/ai"
 const sarvamClient = env.SARVAM_API_KEY ? new SarvamAIClient({ apiSubscriptionKey: env.SARVAM_API_KEY }) : null
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js")
-  const doc = await pdfjsLib.getDocument({ data: buffer }).promise
-  let text = ""
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i)
-    const content = await page.getTextContent()
-    text += content.items.map((item) => (item as { str?: string }).str ?? "").join(" ") + "\n"
-    page.cleanup()
-  }
-  doc.destroy()
+  const { extractText, getDocumentProxy } = await import("unpdf")
+  const pdf = await getDocumentProxy(new Uint8Array(buffer))
+  const { text } = await extractText(pdf, { mergePages: true })
   return text.slice(0, 10000)
 }
 const emailService = env.RESEND_API_KEY ? new EmailService() : null
